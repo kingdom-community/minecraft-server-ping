@@ -31,7 +31,9 @@ export type PingFailureReason =
     | 'invalid-address'
     // Refused, unresolvable, or closed before it answered.
     | 'unreachable'
-    // Accepted the socket and then said nothing within the timeout.
+    // Nothing arrived within the timeout. The one timer starts before the
+    // connect, so a host that swallows the connection lands here too, not just
+    // a server that accepts the socket and then says nothing.
     | 'timeout'
     // Answered, but not with a Server List Ping status.
     | 'malformed';

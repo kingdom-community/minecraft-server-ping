@@ -108,7 +108,7 @@ different responses from you:
 |---|---|---|
 | `invalid-address` | The address could not be parsed at all. No socket was opened. | A configuration mistake. |
 | `unreachable` | Refused, unresolvable, or closed before answering. | The server is off, or the host is wrong. |
-| `timeout` | Accepted the socket, then said nothing inside `timeoutMs`. | The server is up but wedged, or the network is bad. |
+| `timeout` | Nothing arrived inside `timeoutMs`. The one timer starts before the connect, so a host that swallows the connection counts as well as one that accepts the socket and then says nothing. | The server is up but wedged, the port is firewalled rather than closed, or the network is bad. |
 | `malformed` | Answered, but not with a Server List Ping status. | Something else is listening — usually the wrong port. |
 
 If you only care whether players can join, treat every failure the same and read
