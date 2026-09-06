@@ -53,6 +53,41 @@ describe('pingEndpoint', () => {
             .rejects.toThrow(/timed out/);
     });
 
+    it('rejects as unreachable when the peer accepts the socket and then hangs up', async () => {
+        // A proxy in front of a stopped server: accepted, so not a refusal, and
+        // over long before the deadline, so not a stall either. The stub waits
+        // for the handshake before ending, so the client's writes are read
+        // rather than answered with a reset. `once`, because the two client
+        // writes may arrive as one segment or as two and ending twice is an
+        // error on the stub's own socket.
+        const port = await start(listen((socket) => {
+            socket.once('data', () => socket.end());
+        }));
+
+        const error = await pingEndpoint(
+            {host: '127.0.0.1', port, display: '127.0.0.1'},
+            {timeoutMs: 2000}
+        ).catch((thrown: unknown) => thrown);
+
+        expect(error).toBeInstanceOf(PingError);
+        expect((error as PingError).reason).toBe('unreachable');
+        expect((error as PingError).message).toMatch(/closed before a status response/);
+    });
+
+    it('carries the timeout reason on the error it rejects with, not only in the message', async () => {
+        // `timeout` and `unreachable` are the two a caller is most likely to
+        // confuse, and only the discriminant tells them apart in code.
+        const port = await start(listen(() => {}));
+
+        const error = await pingEndpoint(
+            {host: '127.0.0.1', port, display: '127.0.0.1'},
+            {timeoutMs: 300}
+        ).catch((thrown: unknown) => thrown);
+
+        expect(error).toBeInstanceOf(PingError);
+        expect((error as PingError).reason).toBe('timeout');
+    });
+
     it('rejects when the connection is refused', async () => {
         // Bind and immediately close, so the port is known to have nothing on it.
         const port = await start(listen(() => {}));
@@ -109,6 +144,16 @@ describe('ping', () => {
         expect(outcome.port).toBe(port);
     });
 
+    it('lets an explicit port argument win over one embedded in the host string', async () => {
+        // Port 1 is where the ping would land if the string won, and nothing
+        // can be listening there, so losing the precedence rule shows up as a
+        // failed ping rather than as a quietly different connection.
+        const port = await start(listenWithStatus(LIVE_PAYLOAD));
+
+        const outcome = await ping('127.0.0.1:1', port, {timeoutMs: 3000});
+        expect(outcome).toMatchObject({online: true, port, address: `127.0.0.1:${port}`});
+    });
+
     // The whole point of the outcome type: none of these throw.
     it('reports an unreachable server as a value, not an exception', async () => {
         const port = await start(listen(() => {}));
@@ -128,6 +173,24 @@ describe('ping', () => {
 
         const outcome = await ping('127.0.0.1', port, {timeoutMs: 150});
         expect(outcome).toMatchObject({online: false, reason: 'timeout'});
+    });
+
+    it('reports a peer that hangs up part-way through its answer as unreachable', async () => {
+        // Half a framed response and then a hang-up. `readStatusResponse`
+        // correctly says "not a whole packet yet", so nothing here is
+        // malformed — the close is what decides the outcome.
+        const response = statusResponseFor(LIVE_PAYLOAD);
+        const port = await start(listen((socket) => {
+            socket.once('data', () => {
+                socket.write(response.subarray(0, 4));
+                socket.end();
+            });
+        }));
+
+        const outcome = await ping('127.0.0.1', port, {timeoutMs: 2000});
+        expect(outcome).toMatchObject({online: false, reason: 'unreachable'});
+        expect(outcome.online === false && outcome.error.message)
+            .toMatch(/closed before a status response/);
     });
 
     it('reports a peer that answers with the wrong packet id as malformed', async () => {
