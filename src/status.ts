@@ -22,7 +22,8 @@ export interface ServerStatus {
     motd: string | null;
     // The Minecraft version string the server reports, e.g. "1.21.4". This is
     // the only honest source for it: a hard-coded value would go stale the first
-    // time the server updates.
+    // time the server updates. Null when the server omitted it, or sent only
+    // formatting.
     version: string | null;
     // The numeric protocol version, which is what actually decides whether a
     // given client can join. Null when the server omitted it.
@@ -41,19 +42,36 @@ export const stripFormattingCodes = (value: string): string =>
 
 // A server's `description` is either a plain string or a chat component tree
 // ({text, extra: [...]}), and both forms are in the wild. Flatten to text.
+//
+// Walked with an explicit stack rather than by recursion. The tree's depth is
+// chosen by the peer, and `extra` nested tens of thousands of levels deep fits
+// under `maxResponseBytes` while overflowing the call stack — which would turn
+// a hostile answer into a thrown RangeError from a parser that promises to
+// degrade rather than fail. Depth is bounded by the heap instead.
 export const flattenChatComponent = (node: unknown): string => {
-    if (typeof node === 'string') {
-        return node;
+    const parts: string[] = [];
+    // Nodes still to visit, popped from the end, so children are pushed in
+    // reverse to come out in document order.
+    const pending: unknown[] = [node];
+    while (pending.length > 0) {
+        const current = pending.pop();
+        if (typeof current === 'string') {
+            parts.push(current);
+        } else if (Array.isArray(current)) {
+            for (let index = current.length - 1; index >= 0; index -= 1) {
+                pending.push(current[index]);
+            }
+        } else if (current && typeof current === 'object') {
+            const component = current as {text?: unknown; extra?: unknown};
+            if (typeof component.text === 'string') {
+                parts.push(component.text);
+            }
+            if (component.extra !== undefined && component.extra !== null) {
+                pending.push(component.extra);
+            }
+        }
     }
-    if (Array.isArray(node)) {
-        return node.map(flattenChatComponent).join('');
-    }
-    if (node && typeof node === 'object') {
-        const component = node as {text?: unknown; extra?: unknown};
-        const own = typeof component.text === 'string' ? component.text : '';
-        return own + flattenChatComponent(component.extra ?? '');
-    }
-    return '';
+    return parts.join('');
 };
 
 const asFiniteInt = (value: unknown): number | null =>
@@ -93,9 +111,12 @@ export const parseStatusPayload = (payload: unknown): ServerStatus | null => {
     };
 
     const versionNode = body.version as {name?: unknown; protocol?: unknown} | undefined;
+    // Stripped before the emptiness check, the same order as `motd` below, so
+    // a name that was nothing but formatting codes degrades to null rather
+    // than to an empty string.
     const versionName = versionNode?.name;
-    const version = typeof versionName === 'string' && versionName.trim() !== ''
-        ? stripFormattingCodes(versionName).trim()
+    const version = typeof versionName === 'string'
+        ? stripFormattingCodes(versionName).trim() || null
         : null;
 
     const playersNode = body.players as {online?: unknown; max?: unknown; sample?: unknown} | undefined;

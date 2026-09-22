@@ -36,6 +36,26 @@ describe('parseStatusPayload', () => {
         expect(status?.version).toBe('1.21');
     });
 
+    // The same rule `motd` already follows: a field that carries no usable
+    // text once formatting is gone is null, not '', so `version ?? fallback`
+    // renders the fallback instead of a blank.
+    it('nulls a version name that was nothing but formatting codes', () => {
+        expect(parseStatusPayload({version: {name: '§a§l'}})?.version).toBeNull();
+        expect(parseStatusPayload({version: {name: '  '}})?.version).toBeNull();
+        expect(parseStatusPayload({version: {name: ' §a1.21 '}})?.version).toBe('1.21');
+    });
+
+    it('flattens a description nested deeper than the call stack allows', () => {
+        // Each level is ten bytes on the wire, so this fits under the default
+        // `maxResponseBytes` with room to spare — yet recursion would overflow
+        // well before reaching the text at the bottom.
+        let description: unknown = {text: 'bottom'};
+        for (let depth = 0; depth < 100_000; depth += 1) {
+            description = {extra: description};
+        }
+        expect(parseStatusPayload({description})?.motd).toBe('bottom');
+    });
+
     it('passes a favicon data URI through untouched', () => {
         const favicon = 'data:image/png;base64,iVBORw0KGgo=';
         expect(parseStatusPayload({favicon})?.favicon).toBe(favicon);
@@ -80,6 +100,29 @@ describe('flattenChatComponent', () => {
 
     it('ignores nodes it does not understand', () => {
         expect(flattenChatComponent({bold: true})).toBe('');
+    });
+
+    it('keeps document order when text sits beside and inside an extra array', () => {
+        expect(flattenChatComponent(['a', {text: 'b', extra: ['c', {extra: 'd'}]}, ['e', 'f']]))
+            .toBe('abcdef');
+    });
+
+    // Depth is peer-controlled: the walk must be bounded by the heap, not by
+    // the call stack, for both ways a component can nest.
+    it('walks an extra chain tens of thousands of levels deep', () => {
+        let node: unknown = 'deep';
+        for (let depth = 0; depth < 100_000; depth += 1) {
+            node = {text: '', extra: node};
+        }
+        expect(flattenChatComponent(node)).toBe('deep');
+    });
+
+    it('walks arrays nested tens of thousands of levels deep', () => {
+        let node: unknown = 'deep';
+        for (let depth = 0; depth < 100_000; depth += 1) {
+            node = [node];
+        }
+        expect(flattenChatComponent(node)).toBe('deep');
     });
 });
 
