@@ -206,6 +206,21 @@ describe('ping', () => {
         expect(outcome.online === false && outcome.error.message).toMatch(/unexpected packet id/);
     });
 
+    it('reports a whole packet with no JSON in it as malformed, not as a timeout', async () => {
+        // A complete one-byte packet holding only its packet id, then silence.
+        // The peer has answered, just not with a status, so waiting out the
+        // timer would misreport a wrong port as a wedged server. The deadline
+        // is generous so a timeout cannot win the race on a slow runner.
+        const port = await start(listen((socket) => {
+            socket.once('data', () => socket.write(Buffer.from([0x01, 0x00])));
+        }));
+
+        const outcome = await ping('127.0.0.1', port, {timeoutMs: 2000});
+        expect(outcome).toMatchObject({online: false, reason: 'malformed'});
+        expect(outcome.online === false && outcome.error.message)
+            .toMatch(/ends before its JSON length/);
+    });
+
     it('reports a well-framed packet holding invalid JSON as malformed', async () => {
         const port = await start(listen((socket) => {
             socket.on('data', () => {

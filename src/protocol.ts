@@ -30,7 +30,11 @@ export const handshakePacket = (endpoint: ServerEndpoint): Buffer => {
 export const statusRequestPacket = (): Buffer => framePacket(encodeVarInt(0x00));
 
 // Pull the JSON string out of an accumulated response buffer. Returns null
-// while the response is still incomplete, so the caller keeps reading.
+// only while the packet itself is still incomplete, so the caller keeps
+// reading. Once the whole packet has arrived, everything inside it is read
+// against the packet's own end rather than the buffer's: a packet id, string
+// length or string that does not fit is never going to arrive, so it throws as
+// a malformed peer instead of waiting out the caller's timeout.
 export const readStatusResponse = (buffer: Buffer): string | null => {
     const length = decodeVarInt(buffer, 0);
     if (!length) {
@@ -40,21 +44,25 @@ export const readStatusResponse = (buffer: Buffer): string | null => {
     if (buffer.length < packetEnd) {
         return null;
     }
-    const packetId = decodeVarInt(buffer, length.bytesRead);
+    const packet = buffer.subarray(0, packetEnd);
+    const packetId = decodeVarInt(packet, length.bytesRead);
     if (!packetId) {
-        return null;
+        throw new Error('status response packet ends before its packet id');
     }
     if (packetId.value !== 0x00) {
         throw new Error(`unexpected packet id 0x${packetId.value.toString(16)}`);
     }
     const jsonStart = length.bytesRead + packetId.bytesRead;
-    const jsonLength = decodeVarInt(buffer, jsonStart);
+    const jsonLength = decodeVarInt(packet, jsonStart);
     if (!jsonLength) {
-        return null;
+        throw new Error('status response packet ends before its JSON length');
     }
     const bodyStart = jsonStart + jsonLength.bytesRead;
-    if (buffer.length < bodyStart + jsonLength.value) {
-        return null;
+    if (packet.length < bodyStart + jsonLength.value) {
+        throw new Error(
+            `status response claims ${jsonLength.value} bytes of JSON ` +
+            `but its packet holds ${packet.length - bodyStart}`
+        );
     }
-    return buffer.subarray(bodyStart, bodyStart + jsonLength.value).toString('utf8');
+    return packet.subarray(bodyStart, bodyStart + jsonLength.value).toString('utf8');
 };
