@@ -59,6 +59,37 @@ describe('decodeVarInt', () => {
         expect(() => decodeVarInt(Buffer.from([0x80, 0x80, 0x80, 0x80, 0x80, 0x01])))
             .toThrow(/varint too long/);
     });
+
+    // Four continuation bytes are still a legal prefix: a fifth byte could
+    // finish the value, so a streaming caller is told to keep reading.
+    it('returns null after four continuation bytes, which a fifth could still complete', () => {
+        expect(decodeVarInt(Buffer.from([0x80, 0x80, 0x80, 0x80]))).toBeNull();
+    });
+
+    // A fifth byte with its continuation bit set can never be finished, so the
+    // decoder must say so now rather than wait for a sixth byte that would make
+    // no difference — waiting would turn a malformed peer into a timeout.
+    it('throws on a fifth continuation byte without waiting for a sixth', () => {
+        expect(() => decodeVarInt(Buffer.from([0x80, 0x80, 0x80, 0x80, 0x80])))
+            .toThrow(/varint too long/);
+    });
+
+    it('reads the largest five-byte varint as all 32 bits set', () => {
+        expect(decodeVarInt(Buffer.from([0xff, 0xff, 0xff, 0xff, 0x0f])))
+            .toEqual({value: 0xffffffff, bytesRead: 5});
+    });
+
+    it('stops at the first byte without a continuation bit and leaves the rest unread', () => {
+        expect(decodeVarInt(Buffer.from([0x01, 0xff, 0xff]))).toEqual({value: 1, bytesRead: 1});
+    });
+
+    it('returns null when the offset is already at the end of the buffer', () => {
+        expect(decodeVarInt(Buffer.from([0x01]), 1)).toBeNull();
+    });
+
+    it('returns null when a varint at an offset is cut short', () => {
+        expect(decodeVarInt(Buffer.from([0x01, 0x80]), 1)).toBeNull();
+    });
 });
 
 describe('encodeString', () => {
@@ -71,10 +102,20 @@ describe('encodeString', () => {
         expect(encoded[0]).toBe(2);
         expect(encoded.length).toBe(3);
     });
+
+    it('encodes an empty string as a lone zero length', () => {
+        expect([...encodeString('')]).toEqual([0x00]);
+    });
 });
 
 describe('framePacket', () => {
     it('prefixes a body with its own length', () => {
         expect([...framePacket(Buffer.from([1, 2, 3]))]).toEqual([0x03, 1, 2, 3]);
+    });
+
+    it('grows the length prefix to two bytes once a body passes 127 bytes', () => {
+        const framed = framePacket(Buffer.alloc(128, 0x2a));
+        expect([...framed.subarray(0, 2)]).toEqual([0x80, 0x01]);
+        expect(framed.length).toBe(130);
     });
 });
