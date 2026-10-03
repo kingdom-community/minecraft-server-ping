@@ -84,6 +84,61 @@ describe('parseStatusPayload', () => {
             .toEqual([]);
     });
 
+    // The rows below walk each field the parser reads through the shapes a
+    // server it does not control could send. Every one degrades that field
+    // alone and leaves the rest of the status intact.
+    it('nulls an empty or non-string favicon rather than passing it to an <img src>', () => {
+        expect(parseStatusPayload({favicon: ''})?.favicon).toBeNull();
+        expect(parseStatusPayload({favicon: 42})?.favicon).toBeNull();
+        expect(parseStatusPayload({favicon: null})?.favicon).toBeNull();
+    });
+
+    it('nulls the version fields when version is not an object', () => {
+        const status = parseStatusPayload({version: '1.21.4', description: 'still here'});
+        expect(status?.version).toBeNull();
+        expect(status?.protocolVersion).toBeNull();
+        expect(status?.motd).toBe('still here');
+        expect(parseStatusPayload({version: null})?.version).toBeNull();
+    });
+
+    it('reads the protocol version only from a number, truncating a fraction', () => {
+        expect(parseStatusPayload({version: {name: '1.21', protocol: '775'}})?.protocolVersion).toBeNull();
+        expect(parseStatusPayload({version: {name: '1.21', protocol: 775.9}})?.protocolVersion).toBe(775);
+        expect(parseStatusPayload({version: {name: 1.21, protocol: 775}})).toMatchObject({
+            version: null,
+            protocolVersion: 775
+        });
+    });
+
+    // A count without its ceiling (or the other way round) cannot render as
+    // "3 / 20", so the pair is all or nothing.
+    it('nulls the player counts unless both online and max are numbers', () => {
+        expect(parseStatusPayload({players: {online: 3}})?.players).toBeNull();
+        expect(parseStatusPayload({players: {online: 3, max: '20'}})?.players).toBeNull();
+        expect(parseStatusPayload({players: {max: 20, sample: [{id: 'a', name: 'Someone'}]}})?.players)
+            .toBeNull();
+        expect(parseStatusPayload({players: null})?.players).toBeNull();
+    });
+
+    it('treats an absent sample as an empty one', () => {
+        expect(parseStatusPayload({players: {online: 0, max: 20}})?.players)
+            .toEqual({online: 0, max: 20, sample: []});
+    });
+
+    it('keeps a sample entry with a bad id but drops one with no name', () => {
+        const status = parseStatusPayload({
+            players: {online: 2, max: 20, sample: [{id: 7, name: 'Someone'}, {id: 'abc'}, {id: 'def', name: 9}]}
+        });
+        expect(status?.players?.sample).toEqual([{id: '', name: 'Someone'}]);
+    });
+
+    it('nulls a description that holds no text', () => {
+        expect(parseStatusPayload({description: 42})?.motd).toBeNull();
+        expect(parseStatusPayload({description: {text: 7}})?.motd).toBeNull();
+        expect(parseStatusPayload({description: null})?.motd).toBeNull();
+        expect(parseStatusPayload({description: {text: '', extra: []}})?.motd).toBeNull();
+    });
+
     it.each([['a string', 'nope'], ['null', null], ['a number', 7], ['an array', []]])(
         'returns null for %s, which is not a status object at all',
         (_label, payload) => {
@@ -100,6 +155,11 @@ describe('flattenChatComponent', () => {
 
     it('ignores nodes it does not understand', () => {
         expect(flattenChatComponent({bold: true})).toBe('');
+    });
+
+    it('treats a null extra as no children, keeping the node\'s own text', () => {
+        expect(flattenChatComponent({text: 'a', extra: null})).toBe('a');
+        expect(flattenChatComponent(null)).toBe('');
     });
 
     it('keeps document order when text sits beside and inside an extra array', () => {
