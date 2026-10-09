@@ -190,4 +190,20 @@ describe('stripFormattingCodes', () => {
     it('removes colour and style codes in both cases', () => {
         expect(stripFormattingCodes('§ared §lbold §Kobf')).toBe('red bold obf');
     });
+
+    // `§x` and the six digit pairs after it are one hex colour. Stripping only
+    // the pairs leaves "§x" on the page.
+    it('removes a hex colour whole, including its §x prefix, in both cases', () => {
+        expect(stripFormattingCodes('§x§f§f§0§0§0§0Welcome')).toBe('Welcome');
+        expect(stripFormattingCodes('§X§F§F§0§0§0§0Welcome')).toBe('Welcome');
+    });
+
+    it('leaves no §x in a MOTD or version that uses a hex colour', () => {
+        const status = parseStatusPayload({
+            description: '§x§f§f§0§0§0§0Welcome',
+            version: {name: '§x§0§0§f§f§0§0Paper 1.21.4', protocol: 769}
+        });
+        expect(status?.motd).toBe('Welcome');
+        expect(status?.version).toBe('Paper 1.21.4');
+    });
 });

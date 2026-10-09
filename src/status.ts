@@ -37,8 +37,12 @@ export interface ServerStatus {
 
 // Minecraft's legacy section-sign colour codes. They are formatting, not text,
 // and rendering them raw puts things like "§6Welcome" on the page.
+//
+// `x` is in the class for the hex-colour form Spigot and BungeeCord write into
+// legacy strings: `§x` followed by six `§<hex digit>` pairs. Without it the
+// pairs are stripped and a stray "§x" is left on the page.
 export const stripFormattingCodes = (value: string): string =>
-    value.replace(/§[0-9a-fk-orA-FK-OR]/g, '');
+    value.replace(/§[0-9a-fk-orxA-FK-ORX]/g, '');
 
 // A server's `description` is either a plain string or a chat component tree
 // ({text, extra: [...]}), and both forms are in the wild. Flatten to text.
