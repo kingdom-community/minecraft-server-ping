@@ -115,6 +115,91 @@ describe('pingEndpoint', () => {
             {timeoutMs: 2000, maxResponseBytes: 1024}
         )).rejects.toThrow(/too large/);
     });
+
+    it('rejects a refused connection as unreachable and keeps the socket error as its cause', async () => {
+        const port = await start(listen(() => {}));
+        await stub!.close();
+
+        const error = await pingEndpoint(
+            {host: '127.0.0.1', port, display: '127.0.0.1'},
+            {timeoutMs: 1000}
+        ).catch((thrown: unknown) => thrown);
+
+        expect(error).toBeInstanceOf(PingError);
+        expect((error as PingError).reason).toBe('unreachable');
+        // The errno code is what an operator greps a log for, so it survives
+        // the conversion rather than being flattened into the message.
+        expect((error as {cause?: unknown}).cause).toMatchObject({code: 'ECONNREFUSED'});
+    });
+
+    it('rejects a peer that sends past the byte ceiling as malformed, not as a timeout', async () => {
+        const port = await start(listen((socket) => {
+            socket.once('data', () => {
+                socket.write(encodeVarInt(0x7fffffff));
+                socket.write(Buffer.alloc(4096));
+            });
+        }));
+
+        const error = await pingEndpoint(
+            {host: '127.0.0.1', port, display: '127.0.0.1'},
+            {timeoutMs: 2000, maxResponseBytes: 1024}
+        ).catch((thrown: unknown) => thrown);
+
+        expect(error).toBeInstanceOf(PingError);
+        expect((error as PingError).reason).toBe('malformed');
+    });
+
+    // The ceiling is inclusive: a response of exactly `maxResponseBytes` is
+    // read, and one byte more is refused.
+    it('accepts a response exactly as large as the byte ceiling', async () => {
+        const size = statusResponseFor(LIVE_PAYLOAD).length;
+        const port = await start(listenWithStatus(LIVE_PAYLOAD));
+
+        await expect(pingEndpoint(
+            {host: '127.0.0.1', port, display: '127.0.0.1'},
+            {timeoutMs: 3000, maxResponseBytes: size}
+        )).resolves.toMatchObject({payload: LIVE_PAYLOAD});
+    });
+
+    it('refuses a response one byte larger than the byte ceiling', async () => {
+        const size = statusResponseFor(LIVE_PAYLOAD).length;
+        const port = await start(listenWithStatus(LIVE_PAYLOAD));
+
+        await expect(pingEndpoint(
+            {host: '127.0.0.1', port, display: '127.0.0.1'},
+            {timeoutMs: 3000, maxResponseBytes: size - 1}
+        )).rejects.toThrow(/too large/);
+    });
+
+    it('names the display address and the deadline in a timeout message', async () => {
+        // `display`, not `host`: the message is for a log line a person reads,
+        // so it carries the address as they would have typed it.
+        const port = await start(listen(() => {}));
+
+        await expect(pingEndpoint(
+            {host: '127.0.0.1', port, display: 'stub.test'},
+            {timeoutMs: 150}
+        )).rejects.toThrow('server list ping to stub.test timed out after 150ms');
+    });
+
+    it('rejects invalid JSON as malformed and keeps the parse error as its cause', async () => {
+        const port = await start(listen((socket) => {
+            socket.once('data', () => {
+                const json = Buffer.from('{not json', 'utf8');
+                const body = Buffer.concat([encodeVarInt(0x00), encodeVarInt(json.length), json]);
+                socket.write(Buffer.concat([encodeVarInt(body.length), body]));
+            });
+        }));
+
+        const error = await pingEndpoint(
+            {host: '127.0.0.1', port, display: '127.0.0.1'},
+            {timeoutMs: 2000}
+        ).catch((thrown: unknown) => thrown);
+
+        expect(error).toBeInstanceOf(PingError);
+        expect((error as PingError).reason).toBe('malformed');
+        expect((error as {cause?: unknown}).cause).toBeInstanceOf(SyntaxError);
+    });
 });
 
 describe('ping', () => {
@@ -250,5 +335,41 @@ describe('ping', () => {
             port: null,
             address: null
         });
+    });
+
+    it('reports an out-of-range explicit port as an invalid address rather than throwing', async () => {
+        const outcome = await ping('127.0.0.1', 70000);
+        expect(outcome).toMatchObject({online: false, reason: 'invalid-address', address: null});
+        expect(outcome.online === false && outcome.error.message)
+            .toBe('"127.0.0.1" is not a usable Minecraft server address');
+    });
+
+    it('reports a flood past the byte ceiling as malformed, as a value', async () => {
+        const port = await start(listen((socket) => {
+            socket.once('data', () => {
+                socket.write(encodeVarInt(0x7fffffff));
+                socket.write(Buffer.alloc(4096));
+            });
+        }));
+
+        const outcome = await ping('127.0.0.1', port, {timeoutMs: 2000, maxResponseBytes: 1024});
+        expect(outcome).toMatchObject({online: false, reason: 'malformed'});
+        expect(outcome.online === false && outcome.error.message).toMatch(/too large/);
+    });
+});
+
+describe('PingError', () => {
+    it('is an Error named PingError that carries its reason', () => {
+        const error = new PingError('timeout', 'slow');
+        expect(error).toBeInstanceOf(Error);
+        expect(error.name).toBe('PingError');
+        expect(error.reason).toBe('timeout');
+        expect(error.message).toBe('slow');
+    });
+
+    it('sets a cause only when one is given', () => {
+        const cause = new Error('underneath');
+        expect('cause' in new PingError('malformed', 'x')).toBe(false);
+        expect((new PingError('malformed', 'x', {cause}) as {cause?: unknown}).cause).toBe(cause);
     });
 });
