@@ -106,7 +106,7 @@ different responses from you:
 
 | `reason` | What happened | Usually means |
 |---|---|---|
-| `invalid-address` | The address could not be parsed at all. No socket was opened. | A configuration mistake. |
+| `invalid-address` | The address could not be parsed at all, or the explicit `port` argument is not a usable port; `error.message` names which. No socket was opened. | A configuration mistake. |
 | `unreachable` | Refused, unresolvable, or closed before answering. | The server is off, or the host is wrong. |
 | `timeout` | Nothing arrived inside `timeoutMs`. The one timer starts before the connect, so a host that swallows the connection counts as well as one that accepts the socket and then says nothing. | The server is up but wedged, the port is firewalled rather than closed, or the network is bad. |
 | `malformed` | Answered, but not with a Server List Ping status. | Something else is listening — usually the wrong port. |

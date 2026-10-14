@@ -183,9 +183,15 @@ export const ping = async (
 ): Promise<PingOutcome> => {
     const endpoint = resolveEndpoint(host, port);
     if (!endpoint) {
+        // Name the argument that was actually rejected. When the string parses on
+        // its own, the explicit port is the culprit, and a log line that blamed
+        // the host would send an operator to fix the wrong half of the call.
+        const portRejected = port !== undefined && resolveEndpoint(host) !== null;
         const error = new PingError(
             'invalid-address',
-            `"${host}" is not a usable Minecraft server address`
+            portRejected
+                ? `port ${port} is not a usable Minecraft server port for "${host}"`
+                : `"${host}" is not a usable Minecraft server address`
         );
         return {online: false, host: null, port: null, address: null, reason: error.reason, error};
     }
