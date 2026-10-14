@@ -337,11 +337,27 @@ describe('ping', () => {
         });
     });
 
-    it('reports an out-of-range explicit port as an invalid address rather than throwing', async () => {
+    // The host is fine here, so a message that blamed it would point whoever
+    // reads the log at the wrong argument.
+    it('reports an out-of-range explicit port as an invalid address that names the port', async () => {
         const outcome = await ping('127.0.0.1', 70000);
         expect(outcome).toMatchObject({online: false, reason: 'invalid-address', address: null});
         expect(outcome.online === false && outcome.error.message)
-            .toBe('"127.0.0.1" is not a usable Minecraft server address');
+            .toBe('port 70000 is not a usable Minecraft server port for "127.0.0.1"');
+    });
+
+    it('names a non-integer explicit port rather than the host', async () => {
+        const outcome = await ping('play.example.com:25566', 25565.5);
+        expect(outcome).toMatchObject({online: false, reason: 'invalid-address', address: null});
+        expect(outcome.online === false && outcome.error.message)
+            .toBe('port 25565.5 is not a usable Minecraft server port for "play.example.com:25566"');
+    });
+
+    it('still blames the host when the host is what fails, even with a port given', async () => {
+        const outcome = await ping('https://play.example.com', 70000);
+        expect(outcome).toMatchObject({online: false, reason: 'invalid-address', address: null});
+        expect(outcome.online === false && outcome.error.message)
+            .toBe('"https://play.example.com" is not a usable Minecraft server address');
     });
 
     it('reports a flood past the byte ceiling as malformed, as a value', async () => {
