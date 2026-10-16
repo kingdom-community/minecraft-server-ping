@@ -30,6 +30,25 @@ describe('handshakePacket', () => {
         expect([...packet.subarray(versionOffset, versionOffset + 5)])
             .toEqual([...encodeVarInt(-1)]);
     });
+
+    it('stays self-consistent when a long host grows both length prefixes past one byte', () => {
+        const host = `${'a'.repeat(200)}.example.com`;
+        const packet = handshakePacket({host, port: 65535, display: `${host}:65535`});
+        const frame = decodeVarInt(packet)!;
+        expect(frame.bytesRead).toBe(2);
+        expect(packet.length).toBe(frame.bytesRead + frame.value);
+        // Packet id, then the five-byte protocol version, then the host string.
+        const hostOffset = frame.bytesRead + 1 + 5;
+        const hostLength = decodeVarInt(packet, hostOffset)!;
+        expect(hostLength.bytesRead).toBe(2);
+        expect(hostLength.value).toBe(host.length);
+        const hostEnd = hostOffset + hostLength.bytesRead + hostLength.value;
+        expect(packet.subarray(hostOffset + hostLength.bytesRead, hostEnd).toString('utf8')).toBe(host);
+        // The highest port survives as an unsigned short, then next-state 1.
+        expect(packet.readUInt16BE(hostEnd)).toBe(65535);
+        expect(packet.length).toBe(hostEnd + 3);
+        expect(packet[hostEnd + 2]).toBe(0x01);
+    });
 });
 
 describe('statusRequestPacket', () => {
@@ -86,5 +105,56 @@ describe('readStatusResponse', () => {
     it('reads a response whose length prefixes span more than one byte', () => {
         const payload = {description: 'x'.repeat(400)};
         expect(readStatusResponse(statusResponseFor(payload))).toBe(JSON.stringify(payload));
+    });
+
+    it('returns null while only the first byte of a multi-byte length prefix has arrived', () => {
+        const full = statusResponseFor({description: 'x'.repeat(400)});
+        expect(full[0] & 0x80).toBe(0x80);
+        expect(readStatusResponse(full.subarray(0, 1))).toBeNull();
+    });
+
+    it('rejects a length prefix longer than a 32-bit value can occupy', () => {
+        expect(() => readStatusResponse(Buffer.from([0x80, 0x80, 0x80, 0x80, 0x80])))
+            .toThrow(/varint too long/);
+    });
+
+    it('reads only its own packet and ignores bytes that follow it', () => {
+        const payload = {version: {name: '1.21'}};
+        const trailing = statusResponseFor({version: {name: 'not this one'}});
+        expect(readStatusResponse(Buffer.concat([statusResponseFor(payload), trailing])))
+            .toBe(JSON.stringify(payload));
+    });
+
+    it('counts the JSON length in bytes, so a multi-byte MOTD reads whole', () => {
+        const payload = {description: '§aWelcome — ☃ 🏰'};
+        const full = statusResponseFor(payload);
+        expect(readStatusResponse(full)).toBe(JSON.stringify(payload));
+        // Cut inside the four-byte castle: still an incomplete packet, not a
+        // string with a replacement character on the end.
+        const castle = full.indexOf(Buffer.from('🏰', 'utf8'));
+        expect(readStatusResponse(full.subarray(0, castle + 2))).toBeNull();
+    });
+
+    it('returns an empty string for a JSON length of zero, leaving the verdict to the parser', () => {
+        const body = Buffer.concat([encodeVarInt(0x00), encodeVarInt(0)]);
+        const packet = Buffer.concat([encodeVarInt(body.length), body]);
+        expect(readStatusResponse(packet)).toBe('');
+    });
+
+    // The two rows below hold a varint cut off by the packet's own end, with
+    // bytes after the packet that would complete it. Reading past the packet
+    // would borrow those bytes; the framer must not.
+    it('does not complete a packet id from bytes after the packet', () => {
+        const packet = Buffer.from([0x01, 0x80]);
+        const trailing = Buffer.from([0x00, 0x02, 0x7b, 0x7d]);
+        expect(() => readStatusResponse(Buffer.concat([packet, trailing])))
+            .toThrow(/ends before its packet id/);
+    });
+
+    it('does not complete a JSON length from bytes after the packet', () => {
+        const packet = Buffer.from([0x02, 0x00, 0x80]);
+        const trailing = Buffer.from([0x00, 0x7b, 0x7d]);
+        expect(() => readStatusResponse(Buffer.concat([packet, trailing])))
+            .toThrow(/ends before its JSON length/);
     });
 });
