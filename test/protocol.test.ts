@@ -129,9 +129,10 @@ describe('readStatusResponse', () => {
         const payload = {description: '§aWelcome — ☃ 🏰'};
         const full = statusResponseFor(payload);
         expect(readStatusResponse(full)).toBe(JSON.stringify(payload));
-        // Cut inside the last character: still an incomplete packet, not a
+        // Cut inside the four-byte castle: still an incomplete packet, not a
         // string with a replacement character on the end.
-        expect(readStatusResponse(full.subarray(0, full.length - 1))).toBeNull();
+        const castle = full.indexOf(Buffer.from('🏰', 'utf8'));
+        expect(readStatusResponse(full.subarray(0, castle + 2))).toBeNull();
     });
 
     it('returns an empty string for a JSON length of zero, leaving the verdict to the parser', () => {
