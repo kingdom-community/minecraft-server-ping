@@ -27,7 +27,8 @@ export const MAX_RESPONSE_BYTES = 262144;
 // is something there and it is not speaking this protocol" (`malformed`) — the
 // first is an ordinary offline server, the second is usually a wrong port.
 export type PingFailureReason =
-    // The address could not be parsed into a host and port at all.
+    // The address could not be parsed into a host and port at all, or the
+    // explicit `port` argument is not a usable port. No socket was opened.
     | 'invalid-address'
     // Refused, unresolvable, or closed before it answered.
     | 'unreachable'
@@ -146,7 +147,10 @@ export const pingEndpoint = (
         socket.on('data', (chunk) => {
             received = Buffer.concat([received, chunk]);
             if (received.length > maxResponseBytes) {
-                finish(new PingError('malformed', 'status response too large'));
+                finish(new PingError(
+                    'malformed',
+                    `status response from ${endpoint.display} too large: over ${maxResponseBytes} bytes`
+                ));
                 return;
             }
             try {

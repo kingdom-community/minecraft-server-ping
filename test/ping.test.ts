@@ -161,14 +161,16 @@ describe('pingEndpoint', () => {
         )).resolves.toMatchObject({payload: LIVE_PAYLOAD});
     });
 
-    it('refuses a response one byte larger than the byte ceiling', async () => {
+    // Named like the timeout message: the display address and the ceiling that
+    // was exceeded, so a log line says which server and which limit.
+    it('refuses a response one byte larger than the byte ceiling, naming both', async () => {
         const size = statusResponseFor(LIVE_PAYLOAD).length;
         const port = await start(listenWithStatus(LIVE_PAYLOAD));
 
         await expect(pingEndpoint(
-            {host: '127.0.0.1', port, display: '127.0.0.1'},
+            {host: '127.0.0.1', port, display: 'stub.test'},
             {timeoutMs: 3000, maxResponseBytes: size - 1}
-        )).rejects.toThrow(/too large/);
+        )).rejects.toThrow(`status response from stub.test too large: over ${size - 1} bytes`);
     });
 
     it('names the display address and the deadline in a timeout message', async () => {
@@ -370,7 +372,8 @@ describe('ping', () => {
 
         const outcome = await ping('127.0.0.1', port, {timeoutMs: 2000, maxResponseBytes: 1024});
         expect(outcome).toMatchObject({online: false, reason: 'malformed'});
-        expect(outcome.online === false && outcome.error.message).toMatch(/too large/);
+        expect(outcome.online === false && outcome.error.message)
+            .toBe(`status response from 127.0.0.1:${port} too large: over 1024 bytes`);
     });
 });
 
