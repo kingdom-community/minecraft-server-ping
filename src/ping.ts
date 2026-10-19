@@ -162,8 +162,9 @@ export const pingEndpoint = (
                 finish(null, JSON.parse(json));
             } catch (error) {
                 // Neither the framer's errors nor JSON.parse's know which server
-                // they came from, so name it the way the timeout does and keep
-                // their own wording on the end, with the original as the cause.
+                // they came from, so name it in the shape of the too-large message
+                // above and keep their own wording on the end, with the original
+                // as the cause.
                 const detail = error instanceof Error ? error.message : String(error);
                 finish(new PingError(
                     'malformed',
