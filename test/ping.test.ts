@@ -202,6 +202,46 @@ describe('pingEndpoint', () => {
         expect((error as PingError).reason).toBe('malformed');
         expect((error as {cause?: unknown}).cause).toBeInstanceOf(SyntaxError);
     });
+
+    // Named like the other two: a framing error on its own ("unexpected packet
+    // id 0x1") does not say which server sent it, and the detail stays on the
+    // end of the message rather than being replaced.
+    it('names the display address when the peer answers with the wrong packet id', async () => {
+        const port = await start(listen((socket) => {
+            socket.once('data', () => {
+                const body = Buffer.concat([encodeVarInt(0x01), encodeVarInt(0)]);
+                socket.write(Buffer.concat([encodeVarInt(body.length), body]));
+            });
+        }));
+
+        await expect(pingEndpoint(
+            {host: '127.0.0.1', port, display: 'stub.test'},
+            {timeoutMs: 2000}
+        )).rejects.toThrow('status response from stub.test is malformed: unexpected packet id 0x1');
+    });
+
+    it('names the display address when the status JSON does not parse', async () => {
+        const port = await start(listen((socket) => {
+            socket.once('data', () => {
+                const json = Buffer.from('{not json', 'utf8');
+                const body = Buffer.concat([encodeVarInt(0x00), encodeVarInt(json.length), json]);
+                socket.write(Buffer.concat([encodeVarInt(body.length), body]));
+            });
+        }));
+
+        const error = await pingEndpoint(
+            {host: '127.0.0.1', port, display: 'stub.test'},
+            {timeoutMs: 2000}
+        ).catch((thrown: unknown) => thrown);
+
+        expect(error).toBeInstanceOf(PingError);
+        expect((error as PingError).reason).toBe('malformed');
+        expect((error as PingError).message).toMatch(/^status response from stub\.test is malformed: /);
+        // The parser's own wording, whatever this Node version says, survives
+        // after the prefix.
+        const cause = (error as {cause?: unknown}).cause as SyntaxError;
+        expect((error as PingError).message.endsWith(cause.message)).toBe(true);
+    });
 });
 
 describe('ping', () => {
