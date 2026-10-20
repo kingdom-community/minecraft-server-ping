@@ -395,6 +395,15 @@ describe('ping', () => {
             .toBe('port 25565.5 is not a usable Minecraft server port for "play.example.com:25566"');
     });
 
+    // The address is resolved before ping's try, so a throw from parsing it
+    // would reject the promise that is documented never to reject.
+    it('reports a host that is not a string as an invalid address, not a rejection', async () => {
+        const outcome = await ping(25565 as unknown as string);
+        expect(outcome).toMatchObject({online: false, reason: 'invalid-address', address: null});
+        expect(outcome.online === false && outcome.error.message)
+            .toBe('"25565" is not a usable Minecraft server address');
+    });
+
     it('still blames the host when the host is what fails, even with a port given', async () => {
         const outcome = await ping('https://play.example.com', 70000);
         expect(outcome).toMatchObject({online: false, reason: 'invalid-address', address: null});

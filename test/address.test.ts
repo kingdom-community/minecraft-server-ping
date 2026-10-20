@@ -62,6 +62,17 @@ describe('parseServerAddress', () => {
     ])('returns null for %s', (_label, value) => {
         expect(parseServerAddress(value as string | undefined | null)).toBeNull();
     });
+
+    // The plain JS build has no types to stop these, and untyped config — a
+    // JSON file with `"address": 25565` — is exactly where one comes from.
+    it.each([
+        ['a number', 25565],
+        ['an object', {host: 'play.example.com'}],
+        ['an array', ['play.example.com']],
+        ['a boolean', true]
+    ])('returns null rather than throwing for %s', (_label, value) => {
+        expect(parseServerAddress(value as unknown as string)).toBeNull();
+    });
 });
 
 describe('displayAddress', () => {
@@ -140,5 +151,9 @@ describe('endpointFromEnv', () => {
     it('is null when the variable is unset or unusable', () => {
         expect(endpointFromEnv('MISSING', {})).toBeNull();
         expect(endpointFromEnv('BAD', {BAD: 'https://x'})).toBeNull();
+    });
+
+    it('is null rather than throwing when an injected env holds a non-string', () => {
+        expect(endpointFromEnv('PORT_ONLY', {PORT_ONLY: 25565} as unknown as NodeJS.ProcessEnv)).toBeNull();
     });
 });
