@@ -23,8 +23,13 @@ export const displayAddress = (host: string, port: number): string =>
 // a player could actually use — unset, blank, or a malformed port. Null is the
 // signal for the "address not published yet" state; the one thing a site must
 // never do is print a plausible-looking placeholder someone might type.
+//
+// A value that is not a string at all is unset rather than a TypeError. The
+// types rule it out, but untyped config reaches this from plain JS, and `ping()`
+// resolves its address before its `try` — a throw here would reject the promise
+// documented never to reject.
 export const parseServerAddress = (raw: string | undefined | null): ServerEndpoint | null => {
-    const trimmed = (raw ?? '').trim();
+    const trimmed = typeof raw === 'string' ? raw.trim() : '';
     if (trimmed === '') {
         return null;
     }
