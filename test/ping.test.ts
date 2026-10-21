@@ -1,6 +1,6 @@
 import {afterEach, describe, expect, it} from 'vitest';
 
-import {ping, pingEndpoint, PingError} from '../src/ping.js';
+import {ping, pingEndpoint, PingError, type PingOptions} from '../src/ping.js';
 import {encodeVarInt} from '../src/varint.js';
 import {listen, listenWithStatus, statusResponseFor, type StubServer} from './stubServer.js';
 
@@ -29,6 +29,17 @@ describe('pingEndpoint', () => {
         const result = await pingEndpoint({host: '127.0.0.1', port, display: '127.0.0.1'}, {timeoutMs: 3000});
         expect(result.payload).toEqual(LIVE_PAYLOAD);
         expect(result.latencyMs).toBeGreaterThanOrEqual(0);
+    });
+
+    it('uses the default deadline and ceiling when options is null', async () => {
+        // Plain JS can hand over `null` for "no options" (a config value of
+        // `"pingOptions": null`), which a default parameter does not catch.
+        const port = await start(listenWithStatus(LIVE_PAYLOAD));
+        const result = await pingEndpoint(
+            {host: '127.0.0.1', port, display: '127.0.0.1'},
+            null as unknown as PingOptions
+        );
+        expect(result.payload).toEqual(LIVE_PAYLOAD);
     });
 
     it('reassembles a response split across several TCP chunks', async () => {
@@ -262,6 +273,15 @@ describe('ping', () => {
             raw: LIVE_PAYLOAD
         });
         expect(outcome.online && outcome.latencyMs).toBeGreaterThanOrEqual(0);
+    });
+
+    it('pings with the defaults when options is null, rather than reporting the server unreachable', async () => {
+        // Before, reading `timeoutMs` off null threw inside the executor and
+        // the TypeError came back as `unreachable` — a configuration slip
+        // shown as an offline server that was never even consulted.
+        const port = await start(listenWithStatus(LIVE_PAYLOAD));
+        const outcome = await ping('127.0.0.1', port, null as unknown as PingOptions);
+        expect(outcome).toMatchObject({online: true, port, motd: 'An Open Minecraft Server'});
     });
 
     it('accepts the port inside the host string', async () => {
