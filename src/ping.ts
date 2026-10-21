@@ -113,8 +113,11 @@ export const pingEndpoint = (
     options: PingOptions = {}
 ): Promise<RawPingResult> =>
     new Promise((resolve, reject) => {
-        const timeoutMs = options.timeoutMs ?? PING_TIMEOUT_MS;
-        const maxResponseBytes = options.maxResponseBytes ?? MAX_RESPONSE_BYTES;
+        // The default parameter only catches `undefined`. A `null` from plain JS
+        // means "no options" just as much, and reading a field off it would throw
+        // here and come back as an `unreachable` server that was never consulted.
+        const timeoutMs = options?.timeoutMs ?? PING_TIMEOUT_MS;
+        const maxResponseBytes = options?.maxResponseBytes ?? MAX_RESPONSE_BYTES;
         const socket = new Socket();
         const startedAt = Date.now();
         let received = Buffer.alloc(0);
