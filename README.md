@@ -88,6 +88,9 @@ await ping('play.example.com', undefined, {
 });
 ```
 
+Both are optional. An omitted field, an omitted options argument, or `null` in
+its place all use the defaults.
+
 `timeoutMs` covers connect, write and read together: the question a ping answers
 is "can a player connect right now", and a server that accepts a socket and then
 says nothing fails that just as surely as a refusal. The default is deliberately
