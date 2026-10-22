@@ -92,6 +92,15 @@ export interface PingFailure {
 
 export type PingOutcome = PingSuccess | PingFailure;
 
+// Either option counts as omitted unless it is a positive finite number. `??`
+// alone only catches undefined and null, and each value it lets through breaks
+// a bound: `setTimeout(0)` disables the socket's timer, NaN, a negative number,
+// Infinity or a string makes `setTimeout` throw before the connect (and that
+// comes back as an `unreachable` server that was never consulted), and a NaN
+// ceiling is never exceeded.
+const usableOr = (value: unknown, fallback: number): number =>
+    typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback;
+
 const asPingError = (error: unknown, reason: PingFailureReason): PingError => {
     if (error instanceof PingError) {
         return error;
@@ -116,8 +125,8 @@ export const pingEndpoint = (
         // The default parameter only catches `undefined`. A `null` from plain JS
         // means "no options" just as much, and reading a field off it would throw
         // here and come back as an `unreachable` server that was never consulted.
-        const timeoutMs = options?.timeoutMs ?? PING_TIMEOUT_MS;
-        const maxResponseBytes = options?.maxResponseBytes ?? MAX_RESPONSE_BYTES;
+        const timeoutMs = usableOr(options?.timeoutMs, PING_TIMEOUT_MS);
+        const maxResponseBytes = usableOr(options?.maxResponseBytes, MAX_RESPONSE_BYTES);
         const socket = new Socket();
         const startedAt = Date.now();
         let received = Buffer.alloc(0);
