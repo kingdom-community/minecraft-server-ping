@@ -89,7 +89,9 @@ await ping('play.example.com', undefined, {
 ```
 
 Both are optional. An omitted field, an omitted options argument, or `null` in
-its place all use the defaults.
+its place all use the defaults. So does any value that is not a positive, finite
+number: `0`, `NaN`, a negative number or a numeric string never removes the
+deadline or the ceiling.
 
 `timeoutMs` covers connect, write and read together: the question a ping answers
 is "can a player connect right now", and a server that accepts a socket and then
