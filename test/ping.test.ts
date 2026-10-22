@@ -42,6 +42,55 @@ describe('pingEndpoint', () => {
         expect(result.payload).toEqual(LIVE_PAYLOAD);
     });
 
+    // Untyped config can hand over any of these. Node's `socket.setTimeout`
+    // throws on the first four, and a ceiling below one byte refuses every
+    // answer, so each would fail a ping the server never got to answer.
+    it.each([
+        ['timeoutMs', Number.NaN],
+        ['timeoutMs', -1],
+        ['timeoutMs', Number.POSITIVE_INFINITY],
+        ['timeoutMs', '2000'],
+        ['maxResponseBytes', 0],
+        ['maxResponseBytes', -1]
+    ])('uses the default when %s is the unusable value %s', async (field, value) => {
+        const port = await start(listenWithStatus(LIVE_PAYLOAD));
+        const result = await pingEndpoint(
+            {host: '127.0.0.1', port, display: '127.0.0.1'},
+            {[field]: value} as unknown as PingOptions
+        );
+        expect(result.payload).toEqual(LIVE_PAYLOAD);
+    });
+
+    it('keeps the default deadline when timeoutMs is 0, rather than waiting forever', async () => {
+        // `setTimeout(0)` disables a socket's timer, so a peer that accepts and
+        // stalls would leave the promise pending with nothing left to settle it.
+        const port = await start(listen(() => {}));
+
+        await expect(pingEndpoint(
+            {host: '127.0.0.1', port, display: 'stub.test'},
+            {timeoutMs: 0}
+        )).rejects.toThrow('server list ping to stub.test timed out after 2000ms');
+    });
+
+    it('keeps the default ceiling when maxResponseBytes is NaN, rather than reading unbounded', async () => {
+        // Every comparison with NaN is false, so without the default nothing
+        // would stop the flood but the timer, and that reports a timeout. The
+        // flood is larger than the default ceiling, so the client hangs up with
+        // some of it still unsent; the stub's own write error is expected.
+        const port = await start(listen((socket) => {
+            socket.on('error', () => {});
+            socket.once('data', () => {
+                socket.write(encodeVarInt(0x7fffffff));
+                socket.write(Buffer.alloc(300_000));
+            });
+        }));
+
+        await expect(pingEndpoint(
+            {host: '127.0.0.1', port, display: 'stub.test'},
+            {timeoutMs: 3000, maxResponseBytes: Number.NaN}
+        )).rejects.toThrow('status response from stub.test too large: over 262144 bytes');
+    });
+
     it('reassembles a response split across several TCP chunks', async () => {
         const response = statusResponseFor({players: {online: 0, max: 20}});
         const port = await start(listen((socket) => {
@@ -281,6 +330,14 @@ describe('ping', () => {
         // shown as an offline server that was never even consulted.
         const port = await start(listenWithStatus(LIVE_PAYLOAD));
         const outcome = await ping('127.0.0.1', port, null as unknown as PingOptions);
+        expect(outcome).toMatchObject({online: true, port, motd: 'An Open Minecraft Server'});
+    });
+
+    it('pings with the default deadline when timeoutMs is unusable, rather than reporting the server unreachable', async () => {
+        // The same slip as a null options argument: Node's range error from
+        // `setTimeout` used to come back as an offline server.
+        const port = await start(listenWithStatus(LIVE_PAYLOAD));
+        const outcome = await ping('127.0.0.1', port, {timeoutMs: -1});
         expect(outcome).toMatchObject({online: true, port, motd: 'An Open Minecraft Server'});
     });
 
