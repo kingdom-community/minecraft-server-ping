@@ -102,7 +102,10 @@ costs nothing but this timer.
 `maxResponseBytes` is a hard ceiling on what is read from the peer. A status
 response is a few hundred bytes and a favicon pushes it to a few kilobytes;
 anything beyond that is not answering the protocol, and reading it unbounded
-would be a memory sink on a socket somebody else controls.
+would be a memory sink on a socket somebody else controls. A response whose
+length header declares more than the ceiling is refused as soon as that header
+arrives, so a peer that announces an oversized answer and then stalls comes back
+`malformed` at once rather than `timeout` after the full deadline.
 
 ### Failure reasons
 

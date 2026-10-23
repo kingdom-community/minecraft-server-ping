@@ -10,6 +10,7 @@ import {Socket} from 'node:net';
 import {resolveEndpoint, type ServerEndpoint} from './address.js';
 import {handshakePacket, readStatusResponse, statusRequestPacket} from './protocol.js';
 import {parseStatusPayload, type ServerStatus} from './status.js';
+import {decodeVarInt} from './varint.js';
 
 // A couple of seconds. A caller almost always renders "offline" until told
 // otherwise, so a slow server costs nothing but this timer — and a player
@@ -59,7 +60,9 @@ export interface PingOptions {
     // answers is "can a player connect right now", and a server that accepts a
     // socket and then says nothing fails it just as surely as a refusal.
     timeoutMs?: number;
-    // Hard ceiling on the bytes read from the peer before giving up.
+    // Hard ceiling on the bytes read from the peer before giving up. A packet
+    // whose length header declares more is refused as soon as the header
+    // arrives, without waiting for the rest.
     maxResponseBytes?: number;
 }
 
@@ -156,16 +159,28 @@ export const pingEndpoint = (
             `connection to ${endpoint.display} closed before a status response`
         )));
 
+        const tooLarge = () => finish(new PingError(
+            'malformed',
+            `status response from ${endpoint.display} too large: over ${maxResponseBytes} bytes`
+        ));
+
         socket.on('data', (chunk) => {
             received = Buffer.concat([received, chunk]);
             if (received.length > maxResponseBytes) {
-                finish(new PingError(
-                    'malformed',
-                    `status response from ${endpoint.display} too large: over ${maxResponseBytes} bytes`
-                ));
+                tooLarge();
                 return;
             }
             try {
+                // The packet's length header is enough to know whether it can
+                // ever be read under the ceiling. One that declares more is
+                // refused now, rather than waiting out the timer for bytes that
+                // would only be refused when they arrived — and reporting a
+                // peer that did answer as a timeout if it stalls instead.
+                const declared = decodeVarInt(received, 0);
+                if (declared && declared.bytesRead + declared.value > maxResponseBytes) {
+                    tooLarge();
+                    return;
+                }
                 const json = readStatusResponse(received);
                 if (json === null) {
                     // Not a whole packet yet. Keep reading.

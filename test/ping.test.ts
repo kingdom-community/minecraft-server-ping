@@ -233,6 +233,41 @@ describe('pingEndpoint', () => {
         )).rejects.toThrow(`status response from stub.test too large: over ${size - 1} bytes`);
     });
 
+    it('refuses a packet that declares itself larger than the byte ceiling without waiting for the rest', async () => {
+        // Only the length header arrives, then the peer stalls. That header is
+        // already enough to know the answer can never be read under the
+        // ceiling, so waiting out the deadline would report a timeout for a
+        // peer that did answer, just not with this protocol.
+        const port = await start(listen((socket) => {
+            socket.once('data', () => socket.write(encodeVarInt(2048)));
+        }));
+
+        const error = await pingEndpoint(
+            {host: '127.0.0.1', port, display: 'stub.test'},
+            {timeoutMs: 2000, maxResponseBytes: 1024}
+        ).catch((thrown: unknown) => thrown);
+
+        expect(error).toBeInstanceOf(PingError);
+        expect((error as PingError).reason).toBe('malformed');
+        expect((error as PingError).message).toBe('status response from stub.test too large: over 1024 bytes');
+    });
+
+    it('keeps waiting for a packet that declares itself exactly as large as the byte ceiling', async () => {
+        // A two-byte length header for a 1022-byte packet is 1024 bytes in all,
+        // which the inclusive ceiling allows, so the stall is what ends it.
+        const port = await start(listen((socket) => {
+            socket.once('data', () => socket.write(encodeVarInt(1022)));
+        }));
+
+        const error = await pingEndpoint(
+            {host: '127.0.0.1', port, display: 'stub.test'},
+            {timeoutMs: 300, maxResponseBytes: 1024}
+        ).catch((thrown: unknown) => thrown);
+
+        expect(error).toBeInstanceOf(PingError);
+        expect((error as PingError).reason).toBe('timeout');
+    });
+
     it('names the display address and the deadline in a timeout message', async () => {
         // `display`, not `host`: the message is for a log line a person reads,
         // so it carries the address as they would have typed it.
