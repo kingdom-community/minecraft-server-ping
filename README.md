@@ -95,9 +95,11 @@ deadline or the ceiling.
 
 `timeoutMs` covers connect, write and read together: the question a ping answers
 is "can a player connect right now", and a server that accepts a socket and then
-says nothing fails that just as surely as a refusal. The default is deliberately
-short — most callers render "offline" until told otherwise, so a slow server
-costs nothing but this timer.
+says nothing fails that just as surely as a refusal. It is a deadline for the
+whole exchange rather than an idle timer, so a peer that sends its answer a byte
+at a time is cut off at the same point as one that sends nothing. The default is
+deliberately short — most callers render "offline" until told otherwise, so a
+slow server costs nothing but this timer.
 
 `maxResponseBytes` is a hard ceiling on what is read from the peer. A status
 response is a few hundred bytes and a favicon pushes it to a few kilobytes;
@@ -116,7 +118,7 @@ different responses from you:
 |---|---|---|
 | `invalid-address` | The address could not be parsed at all, or the explicit `port` argument is not a usable port; `error.message` names which. No socket was opened. | A configuration mistake. |
 | `unreachable` | Refused, unresolvable, or closed before answering. | The server is off, or the host is wrong. |
-| `timeout` | Nothing arrived inside `timeoutMs`. The one timer starts before the connect, so a host that swallows the connection counts as well as one that accepts the socket and then says nothing. | The server is up but wedged, the port is firewalled rather than closed, or the network is bad. |
+| `timeout` | No status arrived inside `timeoutMs`. The one deadline starts before the connect and is not extended by data, so a host that swallows the connection counts, and so does a peer that trickles its answer, as well as one that accepts the socket and then says nothing. | The server is up but wedged, the port is firewalled rather than closed, or the network is bad. |
 | `malformed` | Answered, but not with a Server List Ping status. | Something else is listening — usually the wrong port. |
 
 If you only care whether players can join, treat every failure the same and read

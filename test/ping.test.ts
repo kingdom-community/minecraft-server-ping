@@ -42,9 +42,10 @@ describe('pingEndpoint', () => {
         expect(result.payload).toEqual(LIVE_PAYLOAD);
     });
 
-    // Untyped config can hand over any of these. Node's `socket.setTimeout`
-    // throws on the first four, and a ceiling below one byte refuses every
-    // answer, so each would fail a ping the server never got to answer.
+    // Untyped config can hand over any of these. Node fires a timer after 1ms
+    // for the first three, a string is only a delay by coercion, and a ceiling
+    // below one byte refuses every answer, so each would fail a ping the
+    // server never got to answer.
     it.each([
         ['timeoutMs', Number.NaN],
         ['timeoutMs', -1],
@@ -61,9 +62,10 @@ describe('pingEndpoint', () => {
         expect(result.payload).toEqual(LIVE_PAYLOAD);
     });
 
-    it('keeps the default deadline when timeoutMs is 0, rather than waiting forever', async () => {
-        // `setTimeout(0)` disables a socket's timer, so a peer that accepts and
-        // stalls would leave the promise pending with nothing left to settle it.
+    it('keeps the default deadline when timeoutMs is 0, rather than timing out at once', async () => {
+        // A zero delay fires on the next tick, before the connect could
+        // complete. The stub accepts and stalls, so the deadline that ends it
+        // is the one the message names.
         const port = await start(listen(() => {}));
 
         await expect(pingEndpoint(

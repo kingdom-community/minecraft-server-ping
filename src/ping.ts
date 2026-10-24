@@ -33,9 +33,10 @@ export type PingFailureReason =
     | 'invalid-address'
     // Refused, unresolvable, or closed before it answered.
     | 'unreachable'
-    // Nothing arrived within the timeout. The one timer starts before the
-    // connect, so a host that swallows the connection lands here too, not just
-    // a server that accepts the socket and then says nothing.
+    // No status arrived within the timeout. The one deadline starts before the
+    // connect and is not extended by data, so a host that swallows the
+    // connection lands here too, and so does a peer that trickles its answer,
+    // not just a server that accepts the socket and then says nothing.
     | 'timeout'
     // Answered, but not with a Server List Ping status.
     | 'malformed';
@@ -56,9 +57,10 @@ export class PingError extends Error {
 }
 
 export interface PingOptions {
-    // One timer covers connect, write and read together: the question a ping
+    // One deadline covers connect, write and read together: the question a ping
     // answers is "can a player connect right now", and a server that accepts a
-    // socket and then says nothing fails it just as surely as a refusal.
+    // socket and then says nothing fails it just as surely as a refusal. It is
+    // not an idle timer, so a peer cannot hold the ping open by trickling bytes.
     timeoutMs?: number;
     // Hard ceiling on the bytes read from the peer before giving up. A packet
     // whose length header declares more is refused as soon as the header
@@ -97,12 +99,16 @@ export type PingOutcome = PingSuccess | PingFailure;
 
 // Either option counts as omitted unless it is a positive finite number. `??`
 // alone only catches undefined and null, and each value it lets through breaks
-// a bound: `setTimeout(0)` disables the socket's timer, NaN, a negative number,
-// Infinity or a string makes `setTimeout` throw before the connect (and that
-// comes back as an `unreachable` server that was never consulted), and a NaN
-// ceiling is never exceeded.
+// a bound: Node fires a timer after 1ms when its delay is 0, NaN, negative or
+// Infinity, which would report every server as timed out before it could
+// answer; a string is only a delay by coercion; and a NaN ceiling is never
+// exceeded.
 const usableOr = (value: unknown, fallback: number): number =>
     typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback;
+
+// The longest delay a Node timer holds. Past it the timer fires after 1ms
+// instead, so a longer deadline waits this long rather than not at all.
+const MAX_TIMER_MS = 2147483647;
 
 const asPingError = (error: unknown, reason: PingFailureReason): PingError => {
     if (error instanceof PingError) {
@@ -134,12 +140,14 @@ export const pingEndpoint = (
         const startedAt = Date.now();
         let received = Buffer.alloc(0);
         let settled = false;
+        let deadline: ReturnType<typeof setTimeout> | undefined;
 
         const finish = (error: PingError | null, payload?: unknown) => {
             if (settled) {
                 return;
             }
             settled = true;
+            clearTimeout(deadline);
             socket.destroy();
             if (error) {
                 reject(error);
@@ -148,11 +156,15 @@ export const pingEndpoint = (
             }
         };
 
-        socket.setTimeout(timeoutMs);
-        socket.on('timeout', () => finish(new PingError(
+        // A plain timer rather than `socket.setTimeout`, which is an idle timer:
+        // every chunk restarts it, so a peer sending a byte at a time could hold
+        // the ping open for as long as the byte ceiling took to fill. Started
+        // before the connect, so a host that swallows the connection is bounded
+        // by it too.
+        deadline = setTimeout(() => finish(new PingError(
             'timeout',
             `server list ping to ${endpoint.display} timed out after ${timeoutMs}ms`
-        )));
+        )), Math.min(timeoutMs, MAX_TIMER_MS));
         socket.on('error', (error) => finish(asPingError(error, 'unreachable')));
         socket.on('close', () => finish(new PingError(
             'unreachable',
