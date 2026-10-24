@@ -42,9 +42,10 @@ describe('pingEndpoint', () => {
         expect(result.payload).toEqual(LIVE_PAYLOAD);
     });
 
-    // Untyped config can hand over any of these. Node's `socket.setTimeout`
-    // throws on the first four, and a ceiling below one byte refuses every
-    // answer, so each would fail a ping the server never got to answer.
+    // Untyped config can hand over any of these. Node fires a timer after 1ms
+    // for the first three, a string is only a delay by coercion, and a ceiling
+    // below one byte refuses every answer, so each would fail a ping the
+    // server never got to answer.
     it.each([
         ['timeoutMs', Number.NaN],
         ['timeoutMs', -1],
@@ -61,9 +62,10 @@ describe('pingEndpoint', () => {
         expect(result.payload).toEqual(LIVE_PAYLOAD);
     });
 
-    it('keeps the default deadline when timeoutMs is 0, rather than waiting forever', async () => {
-        // `setTimeout(0)` disables a socket's timer, so a peer that accepts and
-        // stalls would leave the promise pending with nothing left to settle it.
+    it('keeps the default deadline when timeoutMs is 0, rather than timing out at once', async () => {
+        // A zero delay fires on the next tick, before the connect could
+        // complete. The stub accepts and stalls, so the deadline that ends it
+        // is the one the message names.
         const port = await start(listen(() => {}));
 
         await expect(pingEndpoint(
@@ -266,6 +268,50 @@ describe('pingEndpoint', () => {
 
         expect(error).toBeInstanceOf(PingError);
         expect((error as PingError).reason).toBe('timeout');
+    });
+
+    it('times out a peer that trickles its answer, rather than letting each byte extend the deadline', async () => {
+        // A length header for a packet well under the ceiling, then one byte
+        // every 20ms. An idle timer is reset by every byte and never fires, so
+        // only the hang-up at the end would settle it, as `unreachable`. The
+        // deadline is for the whole exchange, so it comes back as a timeout.
+        const port = await start(listen((socket) => {
+            socket.on('error', () => {});
+            socket.once('data', () => {
+                socket.write(encodeVarInt(100));
+                let sent = 0;
+                const trickle = setInterval(() => {
+                    sent += 1;
+                    if (sent > 40) {
+                        clearInterval(trickle);
+                        socket.end();
+                        return;
+                    }
+                    socket.write(Buffer.from([0x00]));
+                }, 20);
+                socket.on('close', () => clearInterval(trickle));
+            });
+        }));
+
+        const error = await pingEndpoint(
+            {host: '127.0.0.1', port, display: 'stub.test'},
+            {timeoutMs: 150}
+        ).catch((thrown: unknown) => thrown);
+
+        expect(error).toBeInstanceOf(PingError);
+        expect((error as PingError).reason).toBe('timeout');
+        expect((error as PingError).message).toBe('server list ping to stub.test timed out after 150ms');
+    });
+
+    it('waits out a timeoutMs longer than a Node timer can hold, rather than firing at once', async () => {
+        // Node fires a timer after 1ms when its delay is over 2147483647ms, so
+        // an unclamped long deadline would time out before the server answered.
+        const port = await start(listenWithStatus(LIVE_PAYLOAD));
+        const result = await pingEndpoint(
+            {host: '127.0.0.1', port, display: '127.0.0.1'},
+            {timeoutMs: 2 ** 31}
+        );
+        expect(result.payload).toEqual(LIVE_PAYLOAD);
     });
 
     it('names the display address and the deadline in a timeout message', async () => {
