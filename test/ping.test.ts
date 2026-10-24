@@ -268,6 +268,50 @@ describe('pingEndpoint', () => {
         expect((error as PingError).reason).toBe('timeout');
     });
 
+    it('times out a peer that trickles its answer, rather than letting each byte extend the deadline', async () => {
+        // A length header for a packet well under the ceiling, then one byte
+        // every 20ms. An idle timer is reset by every byte and never fires, so
+        // only the hang-up at the end would settle it, as `unreachable`. The
+        // deadline is for the whole exchange, so it comes back as a timeout.
+        const port = await start(listen((socket) => {
+            socket.on('error', () => {});
+            socket.once('data', () => {
+                socket.write(encodeVarInt(100));
+                let sent = 0;
+                const trickle = setInterval(() => {
+                    sent += 1;
+                    if (sent > 40) {
+                        clearInterval(trickle);
+                        socket.end();
+                        return;
+                    }
+                    socket.write(Buffer.from([0x00]));
+                }, 20);
+                socket.on('close', () => clearInterval(trickle));
+            });
+        }));
+
+        const error = await pingEndpoint(
+            {host: '127.0.0.1', port, display: 'stub.test'},
+            {timeoutMs: 150}
+        ).catch((thrown: unknown) => thrown);
+
+        expect(error).toBeInstanceOf(PingError);
+        expect((error as PingError).reason).toBe('timeout');
+        expect((error as PingError).message).toBe('server list ping to stub.test timed out after 150ms');
+    });
+
+    it('waits out a timeoutMs longer than a Node timer can hold, rather than firing at once', async () => {
+        // Node fires a timer after 1ms when its delay is over 2147483647ms, so
+        // an unclamped long deadline would time out before the server answered.
+        const port = await start(listenWithStatus(LIVE_PAYLOAD));
+        const result = await pingEndpoint(
+            {host: '127.0.0.1', port, display: '127.0.0.1'},
+            {timeoutMs: 2 ** 31}
+        );
+        expect(result.payload).toEqual(LIVE_PAYLOAD);
+    });
+
     it('names the display address and the deadline in a timeout message', async () => {
         // `display`, not `host`: the message is for a log line a person reads,
         // so it carries the address as they would have typed it.
