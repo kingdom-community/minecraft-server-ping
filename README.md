@@ -199,9 +199,14 @@ out-of-date client look incompatible to the very server it is asking about.
 
 ```bash
 npm install
-npm test        # vitest, against a loopback stub that speaks the protocol back
-npm run build   # ESM + CJS + type declarations into dist/
+npm run typecheck   # tsc over src/ and test/, emitting nothing
+npm test            # vitest, against a loopback stub that speaks the protocol back
+npm run build       # ESM + CJS + type declarations into dist/
 ```
+
+CI runs these three, in this order, on Node 18, 20 and 22. Run the typecheck
+yourself as well as the tests: vitest strips the types without checking them, so
+a type error passes `npm test` and only fails in CI.
 
 The tests need no network access and no running Minecraft server: they bind
 `127.0.0.1` on an ephemeral port and answer with real, correctly framed packets.
