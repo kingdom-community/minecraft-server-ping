@@ -11,8 +11,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The oldest supported release and the current LTS. The tests open real
-        # loopback sockets, so a Node change in `net` would show up here.
+        # The oldest supported release (`engines.node` is `>=18`) and the LTS
+        # lines after it. The tests open real loopback sockets, so a Node
+        # change in `net` would show up here.
         node-version: ['18.x', '20.x', '22.x']
     steps:
       - uses: actions/checkout@v4
