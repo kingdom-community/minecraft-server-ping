@@ -562,6 +562,28 @@ describe('ping', () => {
             .toBe('"25565" is not a usable Minecraft server address');
     });
 
+    // The message quoting the rejected argument is built before ping's try too,
+    // and a template literal throws a TypeError on a value that cannot become a
+    // string: a Symbol, or an object with no prototype — which is what
+    // `querystring.parse` and `Object.create(null)` dictionaries hand back.
+    it.each([
+        ['a Symbol', Symbol('play.example.com'), 'Symbol(play.example.com)'],
+        ['an object with no prototype', Object.create(null), '[unprintable object]'],
+        ['an object whose toString throws', {toString: () => { throw new Error('no'); }}, '[unprintable object]']
+    ])('reports a host that cannot become a string (%s) as an invalid address, not a rejection', async (_label, host, shown) => {
+        const outcome = await ping(host as unknown as string);
+        expect(outcome).toMatchObject({online: false, reason: 'invalid-address', address: null});
+        expect(outcome.online === false && outcome.error.message)
+            .toBe(`"${shown}" is not a usable Minecraft server address`);
+    });
+
+    it('reports a port that cannot become a string as an invalid port, not a rejection', async () => {
+        const outcome = await ping('play.example.com', Object.create(null) as unknown as number);
+        expect(outcome).toMatchObject({online: false, reason: 'invalid-address', address: null});
+        expect(outcome.online === false && outcome.error.message)
+            .toBe('port [unprintable object] is not a usable Minecraft server port for "play.example.com"');
+    });
+
     it('still blames the host when the host is what fails, even with a port given', async () => {
         const outcome = await ping('https://play.example.com', 70000);
         expect(outcome).toMatchObject({online: false, reason: 'invalid-address', address: null});
