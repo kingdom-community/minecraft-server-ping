@@ -118,6 +118,18 @@ const asPingError = (error: unknown, reason: PingFailureReason): PingError => {
     return new PingError(reason, message, {cause: error});
 };
 
+// A caller's argument as text for an error message. A template literal throws
+// a TypeError on a Symbol, on an object with no prototype, and on one whose
+// `toString` throws — and `ping()` quotes the rejected argument before its
+// `try`, so a throw here would reject the promise documented never to reject.
+const printable = (value: unknown): string => {
+    try {
+        return String(value);
+    } catch {
+        return `[unprintable ${typeof value}]`;
+    }
+};
+
 export interface RawPingResult {
     payload: unknown;
     latencyMs: number;
@@ -242,8 +254,8 @@ export const ping = async (
         const error = new PingError(
             'invalid-address',
             portRejected
-                ? `port ${port} is not a usable Minecraft server port for "${host}"`
-                : `"${host}" is not a usable Minecraft server address`
+                ? `port ${printable(port)} is not a usable Minecraft server port for "${printable(host)}"`
+                : `"${printable(host)}" is not a usable Minecraft server address`
         );
         return {online: false, host: null, port: null, address: null, reason: error.reason, error};
     }
