@@ -30,8 +30,9 @@ export interface ServerStatus {
     protocolVersion: number | null;
     players: PlayerCounts | null;
     // A `data:image/png;base64,...` URI, ready to drop into an <img src>. Null
-    // when the server has no server-icon.png. Not decoded or re-encoded here:
-    // it is passed through exactly as the server sent it.
+    // when the server has no server-icon.png, or sent anything that does not
+    // start with that prefix. Not decoded or re-encoded here: a value that
+    // passes the check is exactly what the server sent.
     favicon: string | null;
 }
 
@@ -77,6 +78,18 @@ export const flattenChatComponent = (node: unknown): string => {
     }
     return parts.join('');
 };
+
+// The prefix the vanilla server writes in front of its server-icon.png. The
+// string comes from the peer, and whatever is returned here is documented as
+// safe for an <img src>: a remote URL would have every visitor's browser fetch
+// from a host the server operator chose, so anything else is null. The original
+// string is still in `raw`.
+const FAVICON_PREFIX = 'data:image/png;base64,';
+
+const asFavicon = (value: unknown): string | null =>
+    typeof value === 'string' && value.startsWith(FAVICON_PREFIX) && value.length > FAVICON_PREFIX.length
+        ? value
+        : null;
 
 const asFiniteInt = (value: unknown): number | null =>
     typeof value === 'number' && Number.isFinite(value) ? Math.trunc(value) : null;
@@ -137,6 +150,6 @@ export const parseStatusPayload = (payload: unknown): ServerStatus | null => {
         version,
         protocolVersion: asFiniteInt(versionNode?.protocol),
         players,
-        favicon: typeof body.favicon === 'string' && body.favicon !== '' ? body.favicon : null
+        favicon: asFavicon(body.favicon)
     };
 };

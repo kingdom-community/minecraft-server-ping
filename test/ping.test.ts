@@ -405,6 +405,14 @@ describe('ping', () => {
         expect(outcome.online && outcome.latencyMs).toBeGreaterThanOrEqual(0);
     });
 
+    it('reports a server online with a null favicon when its favicon is not a PNG data URI, keeping it in raw', async () => {
+        const favicon = 'https://tracker.example/pixel.png';
+        const port = await start(listenWithStatus({...LIVE_PAYLOAD, favicon}));
+        const outcome = await ping('127.0.0.1', port, {timeoutMs: 3000});
+        expect(outcome).toMatchObject({online: true, motd: 'An Open Minecraft Server', favicon: null});
+        expect(outcome.online && (outcome.raw as {favicon?: unknown}).favicon).toBe(favicon);
+    });
+
     it('pings with the defaults when options is null, rather than reporting the server unreachable', async () => {
         // Before, reading `timeoutMs` off null threw inside the executor and
         // the TypeError came back as `unreachable` — a configuration slip
