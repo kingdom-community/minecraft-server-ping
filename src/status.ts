@@ -91,7 +91,7 @@ const asFavicon = (value: unknown): string | null =>
         ? value
         : null;
 
-const asFiniteInt =(value: unknown): number | null =>
+const asFiniteInt = (value: unknown): number | null =>
     typeof value === 'number' && Number.isFinite(value) ? Math.trunc(value) : null;
 
 const asPlayerSample = (value: unknown): PlayerSample[] => {
