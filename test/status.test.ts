@@ -93,6 +93,23 @@ describe('parseStatusPayload', () => {
         expect(parseStatusPayload({favicon: null})?.favicon).toBeNull();
     });
 
+    // The field is documented as a PNG data URI ready for an <img src>, and
+    // the string is the peer's choice. A remote URL here would have every
+    // visitor's browser fetch from a host the server operator picked.
+    it('nulls a favicon that is not a PNG data URI', () => {
+        expect(parseStatusPayload({favicon: 'https://tracker.example/pixel.png'})?.favicon).toBeNull();
+        expect(parseStatusPayload({favicon: 'javascript:alert(1)'})?.favicon).toBeNull();
+        expect(parseStatusPayload({favicon: 'data:image/svg+xml;base64,PHN2Zz4='})?.favicon).toBeNull();
+        expect(parseStatusPayload({favicon: 'data:image/png;base64,'})?.favicon).toBeNull();
+        expect(parseStatusPayload({favicon: ' data:image/png;base64,iVBORw0KGgo='})?.favicon).toBeNull();
+    });
+
+    it('keeps the rest of the status when only the favicon is refused', () => {
+        const status = parseStatusPayload({description: 'still here', favicon: 'https://tracker.example/'});
+        expect(status?.motd).toBe('still here');
+        expect(status?.favicon).toBeNull();
+    });
+
     it('nulls the version fields when version is not an object', () => {
         const status = parseStatusPayload({version: '1.21.4', description: 'still here'});
         expect(status?.version).toBeNull();
