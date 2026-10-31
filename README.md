@@ -50,6 +50,11 @@ if (result.online) {
 `ping()` never rejects. Whether a server is up is a fact about the world, not an
 exceptional condition in your program, so it arrives as a value.
 
+`favicon` is either a `data:image/png;base64,` URI or `null`, so it can go
+straight into an `<img src>`. The server chooses that string, so any other value
+(a remote URL, for example) comes back as `null`, and the original stays in
+`result.raw`.
+
 ### Addresses and ports
 
 All three of these describe the same server:
