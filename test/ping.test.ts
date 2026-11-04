@@ -1,5 +1,6 @@
 import {afterEach, describe, expect, it} from 'vitest';
 
+import type {ServerEndpoint} from '../src/address.js';
 import {ping, pingEndpoint, PingError, type PingOptions} from '../src/ping.js';
 import {encodeVarInt} from '../src/varint.js';
 import {listen, listenWithStatus, statusResponseFor, type StubServer} from './stubServer.js';
@@ -382,6 +383,55 @@ describe('pingEndpoint', () => {
         // after the prefix.
         const cause = (error as {cause?: unknown}).cause as SyntaxError;
         expect((error as PingError).message.endsWith(cause.message)).toBe(true);
+    });
+
+    // The types rule all of these out, but this layer is exported and plain JS
+    // reaches it: `parseServerAddress` and `endpointFromEnv` both return null,
+    // and a hand-built endpoint can carry anything.
+    it.each([
+        ['null', null, 'undefined'],
+        ['undefined', undefined, 'undefined'],
+        ['a missing host', {port: 25565, display: 'stub.test'}, 'stub.test'],
+        ['a non-string host', {host: 42, port: 25565, display: 'stub.test'}, 'stub.test'],
+        ['a missing port', {host: '127.0.0.1', display: 'stub.test'}, 'stub.test'],
+        ['a port past 65535', {host: '127.0.0.1', port: 65536, display: 'stub.test'}, 'stub.test'],
+        ['a fractional port', {host: '127.0.0.1', port: 1.5, display: 'stub.test'}, 'stub.test']
+    ])('refuses %s as an invalid address, not with a raw error', async (_label, endpoint, named) => {
+        const error = await pingEndpoint(
+            endpoint as unknown as ServerEndpoint,
+            {timeoutMs: 20}
+        ).catch((thrown: unknown) => thrown);
+
+        expect(error).toBeInstanceOf(PingError);
+        expect((error as PingError).reason).toBe('invalid-address');
+        expect((error as PingError).message)
+            .toMatch(new RegExp(`^${named.replace('.', '\\.')} is not a usable Minecraft server endpoint: `));
+        // The underlying wording, whatever this Node version says, survives
+        // after the prefix.
+        const cause = (error as {cause?: unknown}).cause as Error;
+        expect((error as PingError).message.endsWith(cause.message)).toBe(true);
+        // Outlive the deadline. A timer left armed by the refusal would fire
+        // here, outside any promise, and read a field off the null endpoint as
+        // an uncaught exception that fails the run.
+        await new Promise((done) => setTimeout(done, 60));
+    });
+
+    // `net` treats a missing host as localhost, so this reached the connect
+    // callback, where the handshake's throw had nothing to catch it.
+    it('refuses a missing host without connecting', async () => {
+        let connections = 0;
+        const port = await start(listen(() => {
+            connections += 1;
+        }));
+
+        const error = await pingEndpoint(
+            {port, display: 'stub.test'} as unknown as ServerEndpoint,
+            {timeoutMs: 150}
+        ).catch((thrown: unknown) => thrown);
+
+        expect(error).toBeInstanceOf(PingError);
+        expect((error as PingError).reason).toBe('invalid-address');
+        expect(connections).toBe(0);
     });
 });
 
