@@ -148,6 +148,11 @@ export const pingEndpoint = (
         // here and come back as an `unreachable` server that was never consulted.
         const timeoutMs = usableOr(options?.timeoutMs, PING_TIMEOUT_MS);
         const maxResponseBytes = usableOr(options?.maxResponseBytes, MAX_RESPONSE_BYTES);
+        // Read once, and defensively. The types rule out a null endpoint, but
+        // `parseServerAddress` returns one and plain JS can pass it straight here.
+        // The messages below are built in timers and socket listeners, where a
+        // throw is an uncaught exception rather than a rejection.
+        const display = printable(endpoint?.display);
         const socket = new Socket();
         const startedAt = Date.now();
         let received = Buffer.alloc(0);
@@ -175,17 +180,17 @@ export const pingEndpoint = (
         // by it too.
         deadline = setTimeout(() => finish(new PingError(
             'timeout',
-            `server list ping to ${endpoint.display} timed out after ${timeoutMs}ms`
+            `server list ping to ${display} timed out after ${timeoutMs}ms`
         )), Math.min(timeoutMs, MAX_TIMER_MS));
         socket.on('error', (error) => finish(asPingError(error, 'unreachable')));
         socket.on('close', () => finish(new PingError(
             'unreachable',
-            `connection to ${endpoint.display} closed before a status response`
+            `connection to ${display} closed before a status response`
         )));
 
         const tooLarge = () => finish(new PingError(
             'malformed',
-            `status response from ${endpoint.display} too large: over ${maxResponseBytes} bytes`
+            `status response from ${display} too large: over ${maxResponseBytes} bytes`
         ));
 
         socket.on('data', (chunk) => {
@@ -219,16 +224,30 @@ export const pingEndpoint = (
                 const detail = error instanceof Error ? error.message : String(error);
                 finish(new PingError(
                     'malformed',
-                    `status response from ${endpoint.display} is malformed: ${detail}`,
+                    `status response from ${display} is malformed: ${detail}`,
                     {cause: error}
                 ));
             }
         });
 
-        socket.connect(endpoint.port, endpoint.host, () => {
-            socket.write(handshakePacket(endpoint));
-            socket.write(statusRequestPacket());
-        });
+        // Both of these throw on an endpoint they cannot use. Caught here, the
+        // throw settles through `finish`, which clears the deadline; left alone it
+        // would reject with a raw error and leave the timer armed. The handshake
+        // is built up front because a throw in the connect callback is uncaught.
+        try {
+            const handshake = handshakePacket(endpoint);
+            socket.connect(endpoint.port, endpoint.host, () => {
+                socket.write(handshake);
+                socket.write(statusRequestPacket());
+            });
+        } catch (error) {
+            const detail = error instanceof Error ? error.message : String(error);
+            finish(new PingError(
+                'invalid-address',
+                `${display} is not a usable Minecraft server endpoint: ${detail}`,
+                {cause: error}
+            ));
+        }
     });
 
 // Ping a server and describe what came back.
