@@ -151,7 +151,7 @@ const {payload, latencyMs} = await pingEndpoint(
 ```
 
 An endpoint that cannot be used at all (`null` from a failed
-`parseServerAddress()`, a missing host, an out-of-range port) rejects with an
+`parseServerAddress()`, a missing host, a port past 65535) rejects with an
 `invalid-address` `PingError` before anything is connected. The `error.message`
 carries the underlying reason.
 
