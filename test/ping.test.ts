@@ -195,6 +195,36 @@ describe('pingEndpoint', () => {
         expect((error as {cause?: unknown}).cause).toMatchObject({code: 'ECONNREFUSED'});
     });
 
+    it('names the address when a connection is refused, not only the resolved IP', async () => {
+        // A sentinel display, because Node's own message carries the IP it
+        // dialled: that is not the name in the caller's config.
+        const port = await start(listen(() => {}));
+        await stub!.close();
+
+        await expect(pingEndpoint(
+            {host: '127.0.0.1', port, display: 'stub.test'},
+            {timeoutMs: 1000}
+        )).rejects.toThrow(`connection to stub.test failed: connect ECONNREFUSED 127.0.0.1:${port}`);
+    });
+
+    it('names the address when an established connection is reset', async () => {
+        // Node's message here is the bare syscall and errno, with no address at
+        // all. The connection did open, so which syscall loses the race with the
+        // reset depends on the platform and only the shape is asserted.
+        const port = await start(listen((socket) => {
+            socket.once('data', () => socket.resetAndDestroy());
+        }));
+
+        const error = await pingEndpoint(
+            {host: '127.0.0.1', port, display: 'stub.test'},
+            {timeoutMs: 1000}
+        ).catch((thrown: unknown) => thrown);
+
+        expect(error).toBeInstanceOf(PingError);
+        expect((error as PingError).reason).toBe('unreachable');
+        expect((error as PingError).message).toMatch(/^connection to stub\.test failed: \w+ E[A-Z]+$/);
+    });
+
     it('rejects a peer that sends past the byte ceiling as malformed, not as a timeout', async () => {
         const port = await start(listen((socket) => {
             socket.once('data', () => {
@@ -509,6 +539,20 @@ describe('ping', () => {
             address: `127.0.0.1:${port}`
         });
         expect(outcome.online === false && outcome.error).toBeInstanceOf(PingError);
+    });
+
+    it('reports a refused host with several addresses with a message that says what failed', async () => {
+        // `localhost` is usually both 127.0.0.1 and ::1. From Node 20, `net`
+        // tries each and reports them as an AggregateError whose own message
+        // is empty, and only its `code` says what happened. Both are closed
+        // here, so a host with one address arrives at the same assertion.
+        const port = await start(listen(() => {}));
+        await stub!.close();
+
+        const outcome = await ping('localhost', port, {timeoutMs: 1000});
+        expect(outcome).toMatchObject({online: false, reason: 'unreachable'});
+        expect(outcome.online === false && outcome.error.message)
+            .toMatch(new RegExp(`^connection to localhost:${port} failed: .*ECONNREFUSED`));
     });
 
     it('reports a stalled server as a timeout, distinct from unreachable', async () => {

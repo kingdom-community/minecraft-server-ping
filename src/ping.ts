@@ -182,7 +182,16 @@ export const pingEndpoint = (
             'timeout',
             `server list ping to ${display} timed out after ${timeoutMs}ms`
         )), Math.min(timeoutMs, MAX_TIMER_MS));
-        socket.on('error', (error) => finish(asPingError(error, 'unreachable')));
+        // Node's own message cannot be logged as it stands. It names the IP that
+        // was dialled at best and no address at all for a reset, and from Node 20
+        // a host whose addresses all fail arrives as an AggregateError with an
+        // empty message and only a `code`. The original is kept as the cause, for
+        // the errno and for each address's own error.
+        socket.on('error', (error: NodeJS.ErrnoException) => finish(new PingError(
+            'unreachable',
+            `connection to ${display} failed: ${error.message || error.code}`,
+            {cause: error}
+        )));
         socket.on('close', () => finish(new PingError(
             'unreachable',
             `connection to ${display} closed before a status response`
