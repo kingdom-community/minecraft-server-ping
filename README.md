@@ -55,6 +55,11 @@ straight into an `<img src>`. The server chooses that string, so any other value
 (a remote URL, for example) comes back as `null`, and the original stays in
 `result.raw`.
 
+`players.sample` holds whatever the server volunteers, which is often lines of
+text for a client's hover box rather than player names. Formatting codes are
+removed from each name, as they are from `motd` and `version`. An entry with no
+text left is dropped, and the original stays in `result.raw`.
+
 ### Addresses and ports
 
 All three of these describe the same server:

@@ -10,9 +10,9 @@ export interface PlayerSample {
 export interface PlayerCounts {
     online: number;
     max: number;
-    // The handful of names a server volunteers with its counts. Optional in the
-    // protocol and often empty or absent, so an empty array is the normal case
-    // rather than a sign of anything.
+    // The handful of names a server volunteers with its counts, with legacy
+    // colour codes removed. Optional in the protocol and often empty or absent,
+    // so an empty array is the normal case rather than a sign of anything.
     sample: PlayerSample[];
 }
 
@@ -94,6 +94,11 @@ const asFavicon = (value: unknown): string | null =>
 const asFiniteInt = (value: unknown): number | null =>
     typeof value === 'number' && Number.isFinite(value) ? Math.trunc(value) : null;
 
+// A sample name is not always a player. Servers fill the sample with lines of
+// text for the hover box in a client's server list, and those carry colour codes
+// the way a MOTD does, so a name is cleaned in the same order as `motd` and
+// `version`. A list has no null to degrade to, so an entry with no text left is
+// treated as one with no name. A real player's name has nothing to strip.
 const asPlayerSample = (value: unknown): PlayerSample[] => {
     if (!Array.isArray(value)) {
         return [];
@@ -103,9 +108,10 @@ const asPlayerSample = (value: unknown): PlayerSample[] => {
             return [];
         }
         const {id, name} = entry as {id?: unknown; name?: unknown};
-        return typeof name === 'string'
-            ? [{id: typeof id === 'string' ? id : '', name}]
-            : [];
+        const text = typeof name === 'string' ? stripFormattingCodes(name).trim() : '';
+        return text === ''
+            ? []
+            : [{id: typeof id === 'string' ? id : '', name: text}];
     });
 };
 

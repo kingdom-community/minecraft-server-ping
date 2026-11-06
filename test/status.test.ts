@@ -149,6 +149,47 @@ describe('parseStatusPayload', () => {
         expect(status?.players?.sample).toEqual([{id: '', name: 'Someone'}]);
     });
 
+    // Servers fill the sample with lines of text for the hover box in a client's
+    // server list, so these names carry colour codes just as a MOTD does.
+    it('strips formatting codes out of a sample name, as it does the MOTD and version', () => {
+        const status = parseStatusPayload({
+            players: {online: 2, max: 20, sample: [
+                {id: 'a', name: '§6Gold §rPlain'},
+                {id: 'b', name: ' §x§f§f§0§0§0§0Welcome '}
+            ]}
+        });
+        expect(status?.players?.sample).toEqual([
+            {id: 'a', name: 'Gold Plain'},
+            {id: 'b', name: 'Welcome'}
+        ]);
+    });
+
+    it('leaves an ordinary player name and its id exactly as sent', () => {
+        const sample = [{id: '0a9fa342-3139-49d7-8acb-fcf4d9c1f0ef', name: 'Example_Player1'}];
+        expect(parseStatusPayload({players: {online: 1, max: 20, sample}})?.players?.sample)
+            .toEqual(sample);
+    });
+
+    // The same rule `motd` and `version` follow, except that a list has no null
+    // to degrade to: an entry with no text left is one with no name at all.
+    it('drops a sample entry whose name was nothing but formatting or blank', () => {
+        const status = parseStatusPayload({
+            players: {online: 4, max: 20, sample: [
+                {id: 'a', name: '§a§l'},
+                {id: 'b', name: '  '},
+                {id: 'c', name: ''},
+                {id: 'd', name: 'Someone'}
+            ]}
+        });
+        expect(status?.players?.sample).toEqual([{id: 'd', name: 'Someone'}]);
+    });
+
+    it('keeps the name as the server sent it in the raw payload it does not touch', () => {
+        const payload = {players: {online: 1, max: 20, sample: [{id: 'a', name: '§6Gold'}]}};
+        parseStatusPayload(payload);
+        expect(payload.players.sample[0].name).toBe('§6Gold');
+    });
+
     it('nulls a description that holds no text', () => {
         expect(parseStatusPayload({description: 42})?.motd).toBeNull();
         expect(parseStatusPayload({description: {text: 7}})?.motd).toBeNull();
