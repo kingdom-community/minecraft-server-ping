@@ -39,11 +39,18 @@ export interface ServerStatus {
 // Minecraft's legacy section-sign colour codes. They are formatting, not text,
 // and rendering them raw puts things like "§6Welcome" on the page.
 //
-// `x` is in the class for the hex-colour form Spigot and BungeeCord write into
-// legacy strings: `§x` followed by six `§<hex digit>` pairs. Without it the
-// pairs are stripped and a stray "§x" is left on the page.
+// A section sign and the character after it are taken as a pair, whatever that
+// character is, because a client hides them the same way: an unknown "§z" is
+// not shown either, and neither is a "§" with nothing after it. Matching only
+// the known codes would leave those on the page, and in "§§66Gold" it would
+// remove the inner pair and join the rest into a working "§6". Pairs read left
+// to right in one pass cannot do that, and no section sign survives. The hex
+// form Spigot and BungeeCord write, `§x` followed by six `§<hex digit>` pairs,
+// is just seven of these.
+//
+// `u` so the character after the sign is taken whole, not half a surrogate pair.
 export const stripFormattingCodes = (value: string): string =>
-    value.replace(/§[0-9a-fk-orxA-FK-ORX]/g, '');
+    value.replace(/§[\s\S]?/gu, '');
 
 // A server's `description` is either a plain string or a chat component tree
 // ({text, extra: [...]}), and both forms are in the wild. Flatten to text.
