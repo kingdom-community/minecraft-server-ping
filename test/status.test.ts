@@ -273,7 +273,7 @@ describe('stripFormattingCodes', () => {
     // join what was left into a working "§6", on a page that was promised none.
     it('leaves no working code behind when one is wrapped in another section sign', () => {
         expect(stripFormattingCodes('§§66Gold')).toBe('66Gold');
-        expect(stripFormattingCodes('§§§aa')).toBe('aa');
+        expect(stripFormattingCodes('§§§aa')).toBe('a');
     });
 
     it('hides a section sign whose next character is not a code, along with that character', () => {
