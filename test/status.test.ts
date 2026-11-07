@@ -264,4 +264,41 @@ describe('stripFormattingCodes', () => {
         expect(status?.motd).toBe('Welcome');
         expect(status?.version).toBe('Paper 1.21.4');
     });
+
+    it('leaves text with no section sign exactly as it was', () => {
+        expect(stripFormattingCodes(' 100% — ☃ 🏰 x&6 ')).toBe(' 100% — ☃ 🏰 x&6 ');
+    });
+
+    // The peer chooses this string. Removing only the inner pair of "§§6" would
+    // join what was left into a working "§6", on a page that was promised none.
+    it('leaves no working code behind when one is wrapped in another section sign', () => {
+        expect(stripFormattingCodes('§§66Gold')).toBe('66Gold');
+        expect(stripFormattingCodes('§§§aa')).toBe('aa');
+    });
+
+    it('hides a section sign whose next character is not a code, along with that character', () => {
+        expect(stripFormattingCodes('§zHello')).toBe('Hello');
+        expect(stripFormattingCodes('Hello §#World')).toBe('Hello World');
+    });
+
+    it('removes a lone section sign at the end of the string', () => {
+        expect(stripFormattingCodes('Welcome§')).toBe('Welcome');
+    });
+
+    // A code unit at a time would take half of the surrogate pair and leave the
+    // other half on the page as an unprintable character.
+    it('takes a character outside the basic plane whole after a section sign', () => {
+        expect(stripFormattingCodes('§🏰Keep')).toBe('Keep');
+    });
+
+    it('degrades a MOTD and a version of nothing but stray section signs to null', () => {
+        const status = parseStatusPayload({description: '§z§', version: {name: '§§', protocol: 769}});
+        expect(status?.motd).toBeNull();
+        expect(status?.version).toBeNull();
+    });
+
+    it('applies the same pairing across chat components, after they are flattened', () => {
+        const status = parseStatusPayload({description: {text: '§', extra: ['zWelcome']}});
+        expect(status?.motd).toBe('Welcome');
+    });
 });
