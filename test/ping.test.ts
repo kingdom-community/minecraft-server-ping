@@ -502,6 +502,15 @@ describe('ping', () => {
         expect(outcome).toMatchObject({online: true, port, motd: 'An Open Minecraft Server'});
     });
 
+    it('pings the port in the string when the port argument is null, rather than reporting an invalid address', async () => {
+        // `ping(host, null, options)` is the plain-JS spelling of the README's
+        // `ping(host, undefined, options)`, and it used to come back as a
+        // configuration mistake without the server ever being consulted.
+        const port = await start(listenWithStatus(LIVE_PAYLOAD));
+        const outcome = await ping(`127.0.0.1:${port}`, null as unknown as number, {timeoutMs: 3000});
+        expect(outcome).toMatchObject({online: true, port, motd: 'An Open Minecraft Server'});
+    });
+
     it('pings with the default deadline when timeoutMs is unusable, rather than reporting the server unreachable', async () => {
         // The same slip as a null options argument: Node's range error from
         // `setTimeout` used to come back as an offline server.

@@ -72,6 +72,8 @@ await ping('play.example.com:25566');
 
 An explicit `port` argument wins over a port embedded in the string, so passing
 both gets you the one you wrote at the call site rather than a silent surprise.
+A `null` port argument counts as no port, the same as `undefined`, so
+`ping('play.example.com:25566', null, options)` pings port 25566.
 
 `parseServerAddress()` is the same rule on its own, with no network involved —
 useful for validating configuration, and for printing an address:
