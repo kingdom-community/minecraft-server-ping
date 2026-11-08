@@ -108,6 +108,13 @@ describe('resolveEndpoint', () => {
             .toEqual({host: 'play.example.com', port: 25565, display: 'play.example.com'});
     });
 
+    // Plain JS spells "no port" as null as often as undefined, and null options
+    // already mean "no options" one argument along.
+    it('treats a null port argument as no port, keeping the one in the string', () => {
+        expect(resolveEndpoint('play.example.com:25566', null as unknown as number))
+            .toEqual({host: 'play.example.com', port: 25566, display: 'play.example.com:25566'});
+    });
+
     it.each([1, 65535])('accepts the explicit port %i at the edge of the range', (port) => {
         expect(resolveEndpoint('play.example.com', port)?.port).toBe(port);
     });
