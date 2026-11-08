@@ -58,6 +58,11 @@ export const parseServerAddress = (raw: string | undefined | null): ServerEndpoi
 // and `ping('h:25566')` — to one endpoint. An explicit `port` argument wins
 // over a port embedded in the string, so a caller passing both gets the one
 // they wrote at the call site rather than a silent surprise.
+//
+// A `null` port is no port, as `undefined` is: plain JS writes
+// `ping(host, null, options)` for "no port, but options", and a `null` options
+// argument already means no options. Refusing it would report a configuration
+// mistake for a call whose meaning is not in doubt.
 export const resolveEndpoint = (
     host: string,
     port?: number
@@ -66,7 +71,7 @@ export const resolveEndpoint = (
     if (!parsed) {
         return null;
     }
-    if (port === undefined) {
+    if (port === undefined || port === null) {
         return parsed;
     }
     if (!Number.isInteger(port) || port < 1 || port > 65535) {
