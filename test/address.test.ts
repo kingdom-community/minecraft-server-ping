@@ -58,7 +58,12 @@ describe('parseServerAddress', () => {
         ['a port longer than five digits', 'play.example.com:00025565'],
         ['a trailing colon with no port', 'play.example.com:'],
         ['a bare port', ':25565'],
-        ['an embedded space', 'play example.com']
+        ['an embedded space', 'play example.com'],
+        // These render like a space, or not at all, so a printed `display`
+        // would look usable while naming a host no client resolves.
+        ['an embedded tab', 'play\texample.com'],
+        ['a newline before the port', 'play.example.com\n:25566'],
+        ['an embedded non-breaking space', 'play example.com']
     ])('returns null for %s', (_label, value) => {
         expect(parseServerAddress(value as string | undefined | null)).toBeNull();
     });
