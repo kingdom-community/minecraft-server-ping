@@ -63,7 +63,7 @@ describe('parseServerAddress', () => {
         // would look usable while naming a host no client resolves.
         ['an embedded tab', 'play\texample.com'],
         ['a newline before the port', 'play.example.com\n:25566'],
-        ['an embedded non-breaking space', 'play example.com']
+        ['an embedded non-breaking space', 'play\u00a0example.com']
     ])('returns null for %s', (_label, value) => {
         expect(parseServerAddress(value as string | undefined | null)).toBeNull();
     });
