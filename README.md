@@ -88,7 +88,8 @@ parseServerAddress('play.example.com:25565');
 `display` is exactly what a player should type into their client. The port is
 dropped when it is the default, because that is what they are told everywhere
 else and an explicit `:25565` invites a typo. Anything that is not an address a
-player could actually use — blank, a URL, a malformed or out-of-range port —
+player could actually use — blank, a URL, whitespace inside the address, a
+malformed or out-of-range port —
 returns `null` rather than a plausible-looking value someone might try to type.
 
 ### Options

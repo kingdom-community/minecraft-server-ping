@@ -35,7 +35,10 @@ export const parseServerAddress = (raw: string | undefined | null): ServerEndpoi
     }
     // A scheme is a configuration mistake rather than an address: the Minecraft
     // protocol has no URL form, so refuse rather than guess at what was meant.
-    if (trimmed.includes('/') || trimmed.includes(' ')) {
+    // Whitespace inside is refused too, and not only a space: `\s` is the set
+    // `trim()` removes from the ends, and a tab or a non-breaking space renders
+    // like a space, so a printed `display` would look usable when it is not.
+    if (trimmed.includes('/') || /\s/.test(trimmed)) {
         return null;
     }
     const separator = trimmed.lastIndexOf(':');
