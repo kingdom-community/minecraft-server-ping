@@ -38,7 +38,10 @@ export const parseServerAddress = (raw: string | undefined | null): ServerEndpoi
     // Whitespace inside is refused too, and not only a space: `\s` is the set
     // `trim()` removes from the ends, and a tab or a non-breaking space renders
     // like a space, so a printed `display` would look usable when it is not.
-    if (trimmed.includes('/') || /\s/.test(trimmed)) {
+    // So are control characters (`Cc`) and invisible format characters (`Cf`),
+    // which `\s` misses: a zero-width space pasted from chat renders as nothing
+    // at all, and no hostname a player's client resolves contains either kind.
+    if (trimmed.includes('/') || /[\s\p{Cc}\p{Cf}]/u.test(trimmed)) {
         return null;
     }
     const separator = trimmed.lastIndexOf(':');
