@@ -243,8 +243,16 @@ export const pingEndpoint = (
         // throw settles through `finish`, which clears the deadline; left alone it
         // would reject with a raw error and leave the timer armed. The handshake
         // is built up front because a throw in the connect callback is uncaught.
+        //
+        // An empty host is refused here as well, because neither of them throws
+        // on it: it encodes as a valid zero-length string, and `net` dials
+        // localhost for it, so a server on this machine would answer for an
+        // endpoint that named none.
         try {
             const handshake = handshakePacket(endpoint);
+            if (endpoint.host === '') {
+                throw new Error('host is empty');
+            }
             socket.connect(endpoint.port, endpoint.host, () => {
                 socket.write(handshake);
                 socket.write(statusRequestPacket());

@@ -422,6 +422,7 @@ describe('pingEndpoint', () => {
         ['null', null, 'undefined'],
         ['undefined', undefined, 'undefined'],
         ['a missing host', {port: 25565, display: 'stub.test'}, 'stub.test'],
+        ['an empty host', {host: '', port: 25565, display: 'stub.test'}, 'stub.test'],
         ['a non-string host', {host: 42, port: 25565, display: 'stub.test'}, 'stub.test'],
         ['a missing port', {host: '127.0.0.1', display: 'stub.test'}, 'stub.test'],
         ['a port past 65535', {host: '127.0.0.1', port: 65536, display: 'stub.test'}, 'stub.test'],
@@ -456,6 +457,25 @@ describe('pingEndpoint', () => {
 
         const error = await pingEndpoint(
             {port, display: 'stub.test'} as unknown as ServerEndpoint,
+            {timeoutMs: 150}
+        ).catch((thrown: unknown) => thrown);
+
+        expect(error).toBeInstanceOf(PingError);
+        expect((error as PingError).reason).toBe('invalid-address');
+        expect(connections).toBe(0);
+    });
+
+    // An empty host encodes into a valid handshake, so nothing threw on it, and
+    // `net` dials localhost for it exactly as it does for a missing one — a
+    // Minecraft server on the caller's own machine would answer in its place.
+    it('refuses an empty host without connecting', async () => {
+        let connections = 0;
+        const port = await start(listen(() => {
+            connections += 1;
+        }));
+
+        const error = await pingEndpoint(
+            {host: '', port, display: 'stub.test'},
             {timeoutMs: 150}
         ).catch((thrown: unknown) => thrown);
 
