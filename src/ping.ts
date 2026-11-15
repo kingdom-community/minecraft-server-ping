@@ -7,7 +7,7 @@
 
 import {Socket} from 'node:net';
 
-import {resolveEndpoint, type ServerEndpoint} from './address.js';
+import {displayAddress, resolveEndpoint, type ServerEndpoint} from './address.js';
 import {handshakePacket, readStatusResponse, statusRequestPacket} from './protocol.js';
 import {parseStatusPayload, type ServerStatus} from './status.js';
 import {decodeVarInt} from './varint.js';
@@ -130,6 +130,22 @@ const printable = (value: unknown): string => {
     }
 };
 
+// The endpoint as error messages name it. `display` when it carries text;
+// otherwise the same text rebuilt from `host` and `port`, which is what
+// `display` is derived from. `{host, port}` is the shape plain JS writes by
+// hand, and a log line naming it "undefined" leaves no server to look at. An
+// endpoint with neither keeps its `display` as printed, whatever it is.
+const describeEndpoint = (endpoint: unknown): string => {
+    const {host, port, display} = (endpoint ?? {}) as {host?: unknown; port?: unknown; display?: unknown};
+    if (typeof display === 'string' && display !== '') {
+        return display;
+    }
+    if (typeof host === 'string' && host !== '' && typeof port === 'number') {
+        return displayAddress(host, port);
+    }
+    return printable(display);
+};
+
 export interface RawPingResult {
     payload: unknown;
     latencyMs: number;
@@ -152,7 +168,7 @@ export const pingEndpoint = (
         // `parseServerAddress` returns one and plain JS can pass it straight here.
         // The messages below are built in timers and socket listeners, where a
         // throw is an uncaught exception rather than a rejection.
-        const display = printable(endpoint?.display);
+        const display = describeEndpoint(endpoint);
         const socket = new Socket();
         const startedAt = Date.now();
         let received = Buffer.alloc(0);

@@ -483,6 +483,53 @@ describe('pingEndpoint', () => {
         expect((error as PingError).reason).toBe('invalid-address');
         expect(connections).toBe(0);
     });
+
+    // `display` is derived from `host` and `port`, and `{host, port}` is the
+    // shape a caller writes by hand from plain JS. Every message used to name
+    // such an endpoint "undefined", which leaves a log line with no server in it.
+    it('names host and port in a timeout message when the endpoint has no display', async () => {
+        const port = await start(listen(() => {}));
+
+        await expect(pingEndpoint(
+            {host: '127.0.0.1', port} as unknown as ServerEndpoint,
+            {timeoutMs: 150}
+        )).rejects.toThrow(`server list ping to 127.0.0.1:${port} timed out after 150ms`);
+    });
+
+    it('names host and port in a timeout message when the display is empty', async () => {
+        const port = await start(listen(() => {}));
+
+        await expect(pingEndpoint(
+            {host: '127.0.0.1', port, display: ''},
+            {timeoutMs: 150}
+        )).rejects.toThrow(`server list ping to 127.0.0.1:${port} timed out after 150ms`);
+    });
+
+    it('names host and port in a malformed message when the endpoint has no display', async () => {
+        const port = await start(listen((socket) => {
+            socket.once('data', () => {
+                const body = Buffer.concat([encodeVarInt(0x01), encodeVarInt(0)]);
+                socket.write(Buffer.concat([encodeVarInt(body.length), body]));
+            });
+        }));
+
+        await expect(pingEndpoint(
+            {host: '127.0.0.1', port} as unknown as ServerEndpoint,
+            {timeoutMs: 2000}
+        )).rejects.toThrow(`status response from 127.0.0.1:${port} is malformed: unexpected packet id 0x1`);
+    });
+
+    it('names host and port when an endpoint with no display is refused as invalid', async () => {
+        const error = await pingEndpoint(
+            {host: 'stub.test', port: 65536} as unknown as ServerEndpoint,
+            {timeoutMs: 20}
+        ).catch((thrown: unknown) => thrown);
+
+        expect((error as PingError).message)
+            .toMatch(/^stub\.test:65536 is not a usable Minecraft server endpoint: /);
+        // Outlive the deadline, as the refusals above do.
+        await new Promise((done) => setTimeout(done, 60));
+    });
 });
 
 describe('ping', () => {
