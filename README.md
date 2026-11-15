@@ -164,6 +164,11 @@ An endpoint that cannot be used at all (`null` from a failed
 an `invalid-address` `PingError` before anything is connected. The
 `error.message` carries the underlying reason.
 
+Every `pingEndpoint` error message names the endpoint by its `display`. If
+`display` is missing or empty, the message uses `host` and `port` in the same
+form instead, so a hand-built `{host, port}` endpoint is never logged as
+`undefined`.
+
 `ping()` also carries the untouched JSON on `result.raw`, for the fields this
 package does not model — servers put all sorts of things there.
 
