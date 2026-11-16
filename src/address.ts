@@ -89,7 +89,12 @@ export const resolveEndpoint = (
 // Read an address out of an environment variable. A function rather than a
 // module constant so a caller can change the variable between calls — and so
 // nothing caches a value that two bundles could disagree about.
+//
+// A `null` variable name is the default name, as `undefined` is: plain JS
+// writes `endpointFromEnv(null, env)` for "the usual variable, this
+// environment", and the default parameter alone would look up a variable
+// called "null" and report a configured server as unpublished.
 export const endpointFromEnv = (
-    variable = 'MINECRAFT_SERVER_ADDRESS',
+    variable?: string,
     env: NodeJS.ProcessEnv = process.env
-): ServerEndpoint | null => parseServerAddress(env[variable]);
+): ServerEndpoint | null => parseServerAddress(env[variable ?? 'MINECRAFT_SERVER_ADDRESS']);

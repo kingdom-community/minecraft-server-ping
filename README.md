@@ -187,6 +187,8 @@ const other = endpointFromEnv('MY_COMMUNITY_SERVER');     // or any name you lik
 
 It reads the variable on every call rather than caching it at import time, so a
 process that changes it — or a test that stubs it — gets the current value.
+A `null` variable name counts as no name, the same as `undefined`, so
+`endpointFromEnv(null, env)` reads `MINECRAFT_SERVER_ADDRESS` from `env`.
 
 ## The protocol, briefly
 
