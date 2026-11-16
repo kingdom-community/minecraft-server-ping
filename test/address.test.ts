@@ -149,6 +149,15 @@ describe('endpointFromEnv', () => {
             .toEqual({host: 'c.example.com', port: 25567, display: 'c.example.com:25567'});
     });
 
+    // Plain JS writes `endpointFromEnv(null, env)` for "the default variable,
+    // but this environment". Read as a name, null looks up a variable called
+    // "null" and reports a configured server as unpublished.
+    it('falls back to MINECRAFT_SERVER_ADDRESS when the variable name is null', () => {
+        const env = {MINECRAFT_SERVER_ADDRESS: 'f.example.com:25568', null: 'wrong.example.com'};
+        expect(endpointFromEnv(null as unknown as string, env))
+            .toEqual({host: 'f.example.com', port: 25568, display: 'f.example.com:25568'});
+    });
+
     // The README promises the variable is read on every call rather than
     // cached, so a change between calls must be what the next call sees.
     it('reads the variable again on every call', () => {
