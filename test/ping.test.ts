@@ -426,7 +426,11 @@ describe('pingEndpoint', () => {
         ['a non-string host', {host: 42, port: 25565, display: 'stub.test'}, 'stub.test'],
         ['a missing port', {host: '127.0.0.1', display: 'stub.test'}, 'stub.test'],
         ['a port past 65535', {host: '127.0.0.1', port: 65536, display: 'stub.test'}, 'stub.test'],
-        ['a fractional port', {host: '127.0.0.1', port: 1.5, display: 'stub.test'}, 'stub.test']
+        ['a fractional port', {host: '127.0.0.1', port: 1.5, display: 'stub.test'}, 'stub.test'],
+        // Both of these encode into a valid handshake, and `net` dials port 0
+        // rather than refusing it, so they came back as an unreachable server.
+        ['port zero', {host: '127.0.0.1', port: 0, display: 'stub.test'}, 'stub.test'],
+        ['port zero as a string', {host: '127.0.0.1', port: '0', display: 'stub.test'}, 'stub.test']
     ])('refuses %s as an invalid address, not with a raw error', async (_label, endpoint, named) => {
         const error = await pingEndpoint(
             endpoint as unknown as ServerEndpoint,
