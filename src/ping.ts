@@ -263,11 +263,19 @@ export const pingEndpoint = (
         // An empty host is refused here as well, because neither of them throws
         // on it: it encodes as a valid zero-length string, and `net` dials
         // localhost for it, so a server on this machine would answer for an
-        // endpoint that named none.
+        // endpoint that named none. So is port 0, for the same reason: it
+        // encodes as a valid unsigned short, and `net` dials it rather than
+        // refusing it, so the kernel's refusal came back as an unreachable
+        // server instead of a configuration mistake. `Number` because both of
+        // them coerce a string port, and the handshake above has already read
+        // it as a number without throwing.
         try {
             const handshake = handshakePacket(endpoint);
             if (endpoint.host === '') {
                 throw new Error('host is empty');
+            }
+            if (Number(endpoint.port) === 0) {
+                throw new Error('port 0 is not a usable port');
             }
             socket.connect(endpoint.port, endpoint.host, () => {
                 socket.write(handshake);
